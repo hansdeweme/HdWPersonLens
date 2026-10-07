@@ -1,0 +1,22 @@
+Known dependency issue: dlib under Python development mode
+
+Environment:
+- Python 3.13
+- dlib 20.0.1
+- face-recognition 1.3.0
+- Windows
+
+Importing dlib with Python development mode enabled (`-X dev`) triggers
+a native memory-allocator mismatch during interpreter shutdown:
+
+    _PyMem_DebugRawFree: bad ID
+    Allocated using API 'o', verified using API 'm'
+
+The issue is reproducible with `import dlib` alone and therefore originates
+in the installed dlib native extension. Normal application execution,
+face recognition, body recognition, and batch processing are unaffected
+in current testing.
+
+Production use should not enable `-X dev`.
+
+Reproduce error: py -3.13 -X dev -X tracemalloc=25 -c "import dlib; print('dlib', dlib.__version__)"

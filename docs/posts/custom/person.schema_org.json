@@ -1,0 +1,212 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/person.schema.json",
+  "title": "Person",
+  "description": "Person in the persons catalog",
+  "type": "object",
+  "properties": {
+    "#person_id": {
+      "description": "The unique identifier for a person",
+      "type": "string"
+    },
+    "personName": {
+      "type": "string"
+    },
+    "otherName": {
+      "description": "Other name(s) used by the person",
+      "type": "string"
+    },
+    "rating": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 5
+    },
+    "ethnicity": {
+      "type": "string",
+      "enum": [
+        "European",
+        "Arabic",
+        "Latina",
+        "African",
+        "Asian"
+      ]
+    },
+    "birth date": {
+      "type": "object",
+      "properties": {
+        "year": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2020
+        },
+        "month": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 12
+        },
+        "day": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 31
+        }
+      },
+      "x-ui": {
+        "layout": "inline"
+      }
+    },
+    "birth_place": {
+      "type": "string"
+    },
+    "colors": {
+      "type": "object",
+      "properties": {
+        "skin": {
+          "type": "string",
+          "enum": [
+            "light",
+            "medium",
+            "dark"
+          ]
+        },
+        "hair": {
+          "type": "string",
+          "enum": [
+            "blonde",
+            "brown",
+            "black",
+            "red",
+            "grey"
+          ]
+        }
+      },
+      "required": [
+        "skin",
+        "hair"
+      ]
+    },
+    "scores": {
+      "type": "object",
+      "properties": {
+        "beauty": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "sexy": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 5
+        }
+      }
+    },
+    "face_shown": {
+      "type": "boolean"
+    },
+    "shaved": {
+      "type": "boolean"
+    },
+    "nudity": {
+      "type": "string",
+      "enum": [
+        "not",
+        "partial",
+        "full"
+      ]
+    },
+    "dimensions": {
+      "type": "object",
+      "properties": {
+        "length": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "weight": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "a_size": {
+          "type": "string",
+          "enum": [
+            "small",
+            "normal",
+            "big",
+            "huge"
+          ]
+        },
+        "t_size": {
+          "type": "string",
+          "enum": [
+            "small",
+            "normal",
+            "big",
+            "huge"
+          ]
+        },
+        "fat": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "length",
+        "weight",
+        "a_size",
+        "t_size"
+      ]
+    },
+    "files_path": {
+      "type": "string",
+      "pattern": "^[A-Za-z]:\\\\.*"
+    },
+    "content_type": {
+      "type": "object",
+      "properties": {
+        "soft": {
+          "type": "boolean"
+        },
+        "dplay": {
+          "type": "boolean"
+        },
+        "hardcore": {
+          "type": "boolean"
+        },
+        "rope": {
+          "type": "boolean"
+        },
+        "bdsm": {
+          "type": "boolean"
+        },
+        "anal": {
+          "type": "boolean"
+        },
+        "throat": {
+          "type": "boolean"
+        },
+        "dp": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "soft",
+        "dplay",
+        "hardcore",
+        "rope",
+        "bdsm",
+        "anal",
+        "throat",
+        "dp"
+      ],
+      "x-ui": {
+        "layout": "grid",
+        "columns": 4
+      }
+    }
+  },
+  "required": [
+    "personName",
+    "rating",
+    "ethnicity",
+    "colors",
+    "scores",
+    "files_path"
+  ]
+}

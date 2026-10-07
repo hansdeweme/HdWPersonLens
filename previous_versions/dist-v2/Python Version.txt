@@ -1,0 +1,19 @@
+Python version
+
+This release was developed and tested with 64-bit CPython 3.13 on Windows.
+
+The setup commands therefore use:
+
+py -3.13
+
+Using another Python version may work, but is not the tested path. This matters because some dependencies used by the app, especially dlib / face_recognition, PyTorch, TorchReID, PyQt6 and OpenCV, can be sensitive to Python version and wheel availability.
+
+Recommended:
+- Python 3.13.x, 64-bit
+- Windows 10/11
+- a clean virtual environment
+
+Not recommended:
+- Python 3.14 unless the dependency stack has been retested
+- 32-bit Python
+- mixing packages from several existing environments

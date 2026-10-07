@@ -1,0 +1,49 @@
+# Python and local tooling
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+.tools/
+.migration/
+*.egg-info/
+build/
+dist/
+
+# Local configuration and credentials
+.env
+.env.*
+.aws/
+.codex/
+settings.json
+settings_org.json
+settings_custom.json
+dedup_settings.json
+
+# Personal datasets, records, embeddings and generated reports
+persons_dataset*/
+persons_unknown/
+persons_processed/
+persons_images_found/
+persons.json
+persons.ndjson
+kb_map.ndjson
+*.pkl
+*.pth
+*.pt
+batch_sessions/
+review_sessions/
+dedup_reports/
+gallery_reports/
+upgrade_reports/
+
+# Generated source dumps and distribution archives
+*codebase.txt
+*.zip
+
+# Editors and operating system
+.idea/
+.vscode/
+Thumbs.db
+.DS_Store
+~$*

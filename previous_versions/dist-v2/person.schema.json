@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/person.schema.json",
+  "comment": "----- Note this is just a small example ---------",
+  "title": "Person",
+  "description": "Person in the persons catalog",
+  "type": "object",
+  "properties": {
+    "#person_id": {"description": "The unique identifier for a person", "type": "string"},
+    "personName": { "type": "string"
+    },
+    "otherName": {
+      "description": "Other name(s) used by the person",
+      "type": "string"
+    },
+    "gender": {
+      "type":"string", "enum": ["male", "female", "other"]
+    },
+    "birth date": {
+        "type": "object",
+        "properties": {
+          "year": {"type":"integer", "minimum": 0, "maximum": 2020},
+          "month": {"type":"integer", "minimum": 0, "maximum": 12},          
+          "day": {"type":"integer", "minimum": 0, "maximum": 31}
+        }
+    },
+    "birth_place": {
+        "type": "string"
+    },
+    "ethnicity": {
+        "type": "string", "enum": ["European", "Arabic", "Latina", "African", "Asian"]
+    },
+    "colors": {
+      "type": "object",
+      "properties": {
+        "skin": { "type": "string", "enum": ["light", "medium", "dark"]},
+        "hair": { "type": "string", "enum": ["blonde", "brown", "black", "red", "grey"]}
+      },
+      "required": [ "skin", "hair" ]
+    },
+    "glasses": {
+        "type": "boolean"
+    },
+    "hair_style": {
+        "type": "string", "enum": ["bald", "short", "medium", "long"]
+    },    
+    "dimensions": {
+      "type": "object",
+      "properties": {
+        "length": { "type": "integer", "minimum": 0 },
+        "weight": { "type": "integer", "minimum": 0 },
+        "build":  { "type": "string", "enum": ["small", "normal", "big", "huge"]}
+      },
+      "required": [ "length", "weight", "build" ]
+    },
+    "files_path": {
+        "type": "string",
+        "pattern": "^[A-Za-z]:\\\\.*"  
+    }
+  },
+  "required": [ "personName", "gender", "ethnicity", "colors", "glasses", "hair_style", "dimensions", "files_path" ]
+}

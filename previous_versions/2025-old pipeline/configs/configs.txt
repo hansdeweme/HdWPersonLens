@@ -1,0 +1,102 @@
+ Volume in drive G is Documents
+ Volume Serial Number is 9A25-E020
+
+ Directory of G:\Coding\recognize\configs
+
+23-06-2026  09:54    <DIR>          .
+22-06-2026  21:46    <DIR>          ..
+27-03-2025  20:55               285 Base-AGW.yml
+27-03-2025  20:55             1.112 Base-bagtricks.yml
+27-03-2025  20:55               161 Base-MGN.yml
+27-03-2025  20:55               912 Base-SBS.yml
+23-06-2026  09:54                 0 configs.txt
+27-03-2025  20:55    <DIR>          DukeMTMC
+27-03-2025  20:55    <DIR>          Market1501
+27-03-2025  20:55    <DIR>          MSMT17
+27-03-2025  20:55    <DIR>          VehicleID
+27-03-2025  20:55    <DIR>          VeRi
+27-03-2025  20:55    <DIR>          VERIWild
+               5 File(s)          2.470 bytes
+
+ Directory of G:\Coding\recognize\configs\DukeMTMC
+
+27-03-2025  20:55    <DIR>          .
+23-06-2026  09:54    <DIR>          ..
+27-03-2025  20:55               176 AGW_R101-ibn.yml
+27-03-2025  20:55               159 AGW_R50-ibn.yml
+27-03-2025  20:55               116 AGW_R50.yml
+27-03-2025  20:55               169 AGW_S50.yml
+27-03-2025  20:55               188 bagtricks_R101-ibn.yml
+27-03-2025  20:55               171 bagtricks_R50-ibn.yml
+27-03-2025  20:55               128 bagtricks_R50.yml
+27-03-2025  20:55               181 bagtricks_S50.yml
+27-03-2025  20:55               159 mgn_R50-ibn.yml
+27-03-2025  20:55               176 sbs_R101-ibn.yml
+27-03-2025  20:55               159 sbs_R50-ibn.yml
+27-03-2025  20:55               116 sbs_R50.yml
+27-03-2025  20:55               169 sbs_S50.yml
+              13 File(s)          2.067 bytes
+
+ Directory of G:\Coding\recognize\configs\Market1501
+
+27-03-2025  20:55    <DIR>          .
+23-06-2026  09:54    <DIR>          ..
+27-03-2025  20:55               182 AGW_R101-ibn.yml
+27-03-2025  20:55               165 AGW_R50-ibn.yml
+27-03-2025  20:55               122 AGW_R50.yml
+27-03-2025  20:55               175 AGW_S50.yml
+27-03-2025  20:55               194 bagtricks_R101-ibn.yml
+27-03-2025  20:55               177 bagtricks_R50-ibn.yml
+27-03-2025  20:55               134 bagtricks_R50.yml
+27-03-2025  20:55               187 bagtricks_S50.yml
+27-03-2025  20:55             1.429 bagtricks_vit.yml
+27-03-2025  20:55               165 mgn_R50-ibn.yml
+27-03-2025  20:55               182 sbs_R101-ibn.yml
+27-03-2025  20:55               165 sbs_R50-ibn.yml
+27-03-2025  20:55               122 sbs_R50.yml
+27-03-2025  20:55               175 sbs_S50.yml
+              14 File(s)          3.574 bytes
+
+ Directory of G:\Coding\recognize\configs\MSMT17
+
+27-03-2025  20:55    <DIR>          .
+23-06-2026  09:54    <DIR>          ..
+27-03-2025  20:55               170 AGW_R101-ibn.yml
+27-03-2025  20:55               153 AGW_R50-ibn.yml
+27-03-2025  20:55               110 AGW_R50.yml
+27-03-2025  20:55               163 AGW_S50.yml
+27-03-2025  20:55               183 bagtricks_R101-ibn.yml
+27-03-2025  20:55               166 bagtricks_R50-ibn.yml
+27-03-2025  20:55               122 bagtricks_R50.yml
+27-03-2025  20:55               176 bagtricks_S50.yml
+27-03-2025  20:55               153 mgn_R50-ibn.yml
+27-03-2025  20:55               170 sbs_R101-ibn.yml
+27-03-2025  20:55               153 sbs_R50-ibn.yml
+27-03-2025  20:55               110 sbs_R50.yml
+27-03-2025  20:55               163 sbs_S50.yml
+              13 File(s)          1.992 bytes
+
+ Directory of G:\Coding\recognize\configs\VehicleID
+
+27-03-2025  20:55    <DIR>          .
+23-06-2026  09:54    <DIR>          ..
+27-03-2025  20:55               567 bagtricks_R50-ibn.yml
+               1 File(s)            567 bytes
+
+ Directory of G:\Coding\recognize\configs\VeRi
+
+27-03-2025  20:55    <DIR>          .
+23-06-2026  09:54    <DIR>          ..
+27-03-2025  20:55               483 sbs_R50-ibn.yml
+               1 File(s)            483 bytes
+
+ Directory of G:\Coding\recognize\configs\VERIWild
+
+27-03-2025  20:55    <DIR>          .
+23-06-2026  09:54    <DIR>          ..
+27-03-2025  20:55               563 bagtricks_R50-ibn.yml
+               1 File(s)            563 bytes
+
+     Total Files Listed:
+              48 File(s)         11.716 bytes
+              20 Dir(s)  234.250.604.544 bytes free

@@ -1,0 +1,18 @@
+1440 by 3216
+first cut off top 710 rows
+1440 by 2505
+next cut off bottom 705 rows
+1440 by 1800
+
+mkdir out -ea 0
+
+magick mogrify -path out -auto-orient -gravity North -chop 0x710  +repage *.jpg
+magick mogrify -path out -auto-orient -gravity South -chop 0x705  +repage out\*.png
+
+1440 by 3216
+first cut off top 336 rows
+1440 by 2880
+next cut off bottom 220 rows
+1440 by 2660
+magick mogrify -path out -auto-orient -gravity North -chop 0x336  +repage *.jpg
+magick mogrify -path out -auto-orient -gravity South -chop 0x220  +repage out\*.png

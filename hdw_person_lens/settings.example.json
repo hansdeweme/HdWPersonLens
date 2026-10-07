@@ -1,0 +1,8 @@
+{
+    "input_folder": "../data/persons_unknown",
+    "output_folder": "../data/persons_processed",
+    "knowledge_base": "../data/persons_dataset",
+    "schema_path": "../data/persons_dataset/person.schema.json",
+    "database_path": "../data/persons_dataset/persons.json",
+    "person_match_output_path": "../data/persons_images_found"
+}

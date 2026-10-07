@@ -1,0 +1,20 @@
+Start with creating a virtual environment:
+py -3.13 -m venv .venv
+.\.venv\Scripts\activate
+py -m pip install --upgrade pip
+py -m pip install -r requirements-base.txt
+
+
+Install the base dependencies:
+py -3.13 -m pip install -r requirements-base.txt
+
+Then install the Torch build that matches your machine.
+
+For CPU-only use:
+py -3.13 -m pip install torch==2.10.0 torchvision==0.25.0
+
+For NVIDIA CUDA 12.8:
+py -3.13 -m pip install torch==2.10.0+cu128 torchvision==0.25.0+cu128 --index-url https://download.pytorch.org/whl/cu128
+
+For DirectML / AMD support, install torch-directml as an optional extra:
+py -3.13 -m pip install torch-directml

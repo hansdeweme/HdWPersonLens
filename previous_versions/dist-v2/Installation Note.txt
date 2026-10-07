@@ -1,0 +1,16 @@
+## New installation workflow
+
+For a new knowledge base, start with an empty folder.
+
+Recommended first setup:
+
+Create an empty folder for the new knowledge base.
+Start the app.
+Open Knowledge Base → Setup / Migration → Initialize New KB.
+Select the empty folder.
+Add person records and trusted reference images.
+Run Knowledge Base → Maintenance / Repair → Rebuild All Encodings.
+Run Knowledge Base → Setup / Migration → Check KB Compatibility.
+Start with a small recognition test batch.
+
+Do not begin with the full archive. For a first test, create a small folder with 20–50 images, run recognition, inspect the review results, and only then scale up.

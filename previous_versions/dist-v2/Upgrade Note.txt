@@ -1,0 +1,19 @@
+## Upgrading from the previous app
+
+Users of the earlier prototype should use the upgrade workflow instead of manually copying files into the new layout.
+
+Recommended upgrade path:
+
+Keep a separate backup of the old knowledge-base folder.
+Start the new app.
+Open Knowledge Base → Setup / Migration → Import / Upgrade Legacy KB.
+Select the old knowledge-base folder as the source.
+Select a new destination folder for the upgraded v2 workspace.
+Let the app copy the useful data.
+Run Check KB Compatibility.
+Run Rebuild All Encodings if the report recommends it.
+Review the generated upgrade and compatibility reports.
+
+The upgrade workflow should copy data into a new v2 workspace. It should not modify the old knowledge base in place.
+
+Old encoding banks may lack newer metadata, especially body-recognition pipeline metadata. If the compatibility report mentions missing or incompatible metadata, rebuild all encodings.

@@ -1,0 +1,10 @@
+            aligned_faces = detect_and_align_faces(rgb, model=params["detector"], upsample=params["upsample"], desired_size=params["align_size"], 
+                                                   resize_max=params["resize_max"], retry_if_empty=not is_fast_batch, allow_cnn_fallback=not is_fast_batch,)
+            # -------------------------------------------------
+            # Pass 2: more permissive fallback
+            # -------------------------------------------------
+            if not aligned_faces and not is_fast_batch:
+                fallback_params = adapt_params(base, quality, last_try=True,)
+                aligned_faces = detect_and_align_faces(rgb, model=fallback_params["detector"], upsample=fallback_params["upsample"],  desired_size=fallback_params["align_size"],
+                                                        resize_max=max(fallback_params["resize_max"], 1000,), lap_var_thresh=None, 
+                                                        retry_if_empty=False, allow_cnn_fallback=True,)
