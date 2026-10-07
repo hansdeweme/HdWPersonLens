@@ -3,7 +3,7 @@
 # Licensed under the MIT License (https://opensource.org/licenses/MIT).
 # Part of the Person Recognition project for managing a knowledge base of known individuals and their associated media.
 #
-
+#
 # legacy_kb_upgrade.py
 from __future__ import annotations
 import json, os, pickle, shutil
@@ -12,8 +12,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 # local imports
-from config import PERSONS_DB_FILENAME, KB_SYSTEM_DIRS, ENCODINGS_FILENAME, DEFAULT_RECOGNITION_EXTENSIONS
-from encoding_bank_unpickler import load_encoding_bank
+from .config import PERSONS_DB_FILENAME, KB_SYSTEM_DIRS, ENCODINGS_FILENAME, DEFAULT_RECOGNITION_EXTENSIONS
+from .encoding_bank_unpickler import load_encoding_bank
 
 @dataclass(frozen=True)
 class LegacyKBUpgradeIssue:
@@ -123,7 +123,7 @@ def _make_person_rows(names: list[str], destination_root: Path) -> list[dict[str
     return rows
 
 def _write_kb_version(destination_root: Path, *, source_root: Path, settings: dict[str, Any]) -> None:
-    payload = {"schema_version": 2, "created_by": "Person Recognition App", "created_at_utc": _utc_now(), "upgrade_mode": "legacy_copy",
+    payload = {"schema_version": 2, "created_by": "PersonLens", "created_at_utc": _utc_now(), "upgrade_mode": "legacy_copy",
                "legacy_source_root": str(source_root), "encodings_policy": "legacy encodings copied for reference; rebuild recommended",
                "reid_model": settings.get("reid_model") or settings.get("body_model") or "", "valid_extensions": list(_valid_exts(settings))}
     _write_json(destination_root / ".kb_version.json", payload)

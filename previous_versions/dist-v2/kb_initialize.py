@@ -74,7 +74,7 @@ def initialize_v2_kb_workspace(kb_root: str | Path, *, settings: dict[str, Any] 
     version_path = root / ".kb_version.json"
     _write_json_atomic(version_path, {
         "schema_version": 2,
-        "created_by": "Person Recognition App",
+        "created_by": "PersonLens",
         "created_at_utc": _utc_now(),
         "workspace_type": "v2_knowledge_base",
         "encodings_filename": encodings_filename,

@@ -7,15 +7,14 @@
 from __future__ import annotations
 from collections.abc import Callable, Mapping
 from typing import Any
-
 import os
 import numpy as np
 from numbers  import Real
 # PyQt imports
 from PyQt6.QtWidgets import QWidget, QMessageBox, QDialog
 # local imports
-from recognition_gui_dialogs import LookalikeFinderDialog, LookalikeResultsDialog
-from kb_utils import _group_by_person
+from .recognition_gui_dialogs import LookalikeFinderDialog, LookalikeResultsDialog
+from .kb_utils import _group_by_person
 
 #-----------------------------------
 # ---------- helpers ----------   

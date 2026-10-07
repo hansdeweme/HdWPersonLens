@@ -4,10 +4,8 @@
 # Licensed under the MIT License (https://opensource.org/licenses/MIT).
 # Part of the Person Recognition project for managing a knowledge base of known individuals and their associated media.
 #
-
+#
 from __future__ import annotations
-
-import os
 import sys
 import warnings
 from pathlib import Path
@@ -24,14 +22,14 @@ def preload_runtime_dependencies() -> None:
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv if argv is None else argv)
-    print("[Startup] Loading Person Recognition App...", flush=True)
+    print("[Startup] Loading PersonLens...", flush=True)
     apply_warning_filters()
     print("[Startup] Loading runtime dependencies...", flush=True)
     preload_runtime_dependencies()
 
     from PyQt6.QtWidgets import QApplication, QMessageBox
-    from config import APP_NAME, APP_DISPLAY_TITLE, load_settings
-    from recognition_gui import MainWindow
+    from .config import APP_NAME, APP_DISPLAY_TITLE, load_settings
+    from .recognition_gui import MainWindow
 
     app = QApplication(argv)
     app.setApplicationName(APP_NAME)

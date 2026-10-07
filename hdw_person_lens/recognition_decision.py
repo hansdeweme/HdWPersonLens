@@ -9,7 +9,6 @@ import math
 from dataclasses import dataclass
 from typing import Any, Mapping
 
-
 #---------------------------------------
 # To be used by recognize_image
 #---------------------------------------

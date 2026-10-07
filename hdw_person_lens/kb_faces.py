@@ -6,8 +6,7 @@
 # •	can directly compute a face embedding per aligned chip
 from __future__ import annotations
 from io import BytesIO
-import math
-from typing import Any, Optional, Tuple, List, Dict
+from typing import Any
 import cv2
 import numpy as np
 import face_recognition
@@ -20,7 +19,6 @@ warnings.filterwarnings(
     message=r"pkg_resources is deprecated as an API.*",
     module=r"face_recognition_models(\.|$)"
 )
-
 
 
 def _as_explicit_rgb_uint8(image: Any) -> np.ndarray:

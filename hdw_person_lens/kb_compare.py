@@ -1,4 +1,8 @@
 #kb_compare.copy
+# Copyright (c) 2025, 2026 Hans De Weme
+# Licensed under the MIT License (https://opensource.org/licenses/MIT).
+# Part of the Person Recognition project for managing a knowledge base of known individuals and their associated media.
+#
 import itertools
 import numpy as np
 

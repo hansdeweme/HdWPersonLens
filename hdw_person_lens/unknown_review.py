@@ -14,9 +14,9 @@ from PyQt6.QtWidgets import QComboBox, QDialog, QHBoxLayout, QLabel, QMessageBox
 from PyQt6.QtCore    import Qt, pyqtSignal, QThread
 from PyQt6.QtGui     import QPixmap
 #local imports
-from review_session_reporting import RecognitionReviewResult, apply_recognition_review_decisions, new_session_id, utc_now_iso
-from recognition_contenders   import ContenderSlateWidget
-from config          import DEFAULT_RECOGNITION_EXTENSIONS  
+from .review_session_reporting import RecognitionReviewResult, apply_recognition_review_decisions, new_session_id, utc_now_iso
+from .recognition_contenders   import ContenderSlateWidget
+from .config          import DEFAULT_RECOGNITION_EXTENSIONS  
 
 def _path_key(path: str | Path) -> str:
     return os.path.normcase(os.path.abspath(os.fspath(path)))

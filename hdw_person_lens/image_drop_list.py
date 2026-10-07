@@ -4,7 +4,7 @@
 # Licensed under the MIT License (https://opensource.org/licenses/MIT).
 # Part of the Person Recognition project for managing a knowledge base of known individuals and their associated media.
 #
-
+#
 import os
 # PyQt6 imports
 from PyQt6.QtGui     import QIcon 

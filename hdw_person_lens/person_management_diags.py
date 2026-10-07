@@ -4,7 +4,7 @@
 # Licensed under the MIT License (https://opensource.org/licenses/MIT).
 # Part of the Person Recognition project for managing a knowledge base of known individuals and their associated media.
 #
-
+#
 import os
 # PyQt6 imports
 from PyQt6           import QtGui
@@ -13,9 +13,9 @@ from PyQt6.QtGui     import QIcon, QPixmap
 from PyQt6.QtWidgets import (QDialog, QMessageBox, QComboBox,  QDialogButtonBox, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,  
                              QFileDialog, QFormLayout, QCheckBox, QListWidget, QListWidgetItem, QGraphicsView, QGraphicsScene, QGraphicsPixmapItem)
 # local imports
-from image_drop_list   import DropWidget
-from person_service    import PersonConflictError, PersonNotFoundError, PersonServiceError
-from config            import DEFAULT_RECOGNITION_EXTENSIONS
+from .image_drop_list   import DropWidget
+from .person_service    import PersonConflictError, PersonNotFoundError, PersonServiceError
+from .config            import DEFAULT_RECOGNITION_EXTENSIONS
 
 
 class SelectPersonDialog(QDialog):

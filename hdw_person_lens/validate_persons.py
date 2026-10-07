@@ -3,12 +3,12 @@
 # Licensed under the MIT License (https://opensource.org/licenses/MIT).
 # Part of the Person Recognition project for managing a knowledge base of known individuals and their associated media.
 #
-
+#
 import json
 from pathlib import Path
 from   jsonschema import Draft202012Validator
 # local imports
-from   config import PERSON_SCHEMA_FILENAME
+from   .config import PERSON_SCHEMA_FILENAME
 
 SCHEMA_PATH = Path(__file__).resolve().parent / PERSON_SCHEMA_FILENAME
 

@@ -1,4 +1,8 @@
 #kb_utils.py
+# Copyright (c) 2025, 2026 Hans De Weme
+# Licensed under the MIT License (https://opensource.org/licenses/MIT).
+# Part of the Person Recognition project for managing a knowledge base of known individuals and their associated media.
+#
 from __future__ import annotations
 import cv2
 import hashlib
@@ -10,8 +14,7 @@ from dataclasses import dataclass
 from collections import defaultdict
 from typing import Callable, Literal, Sequence
 # local imports
-from   config                  import DEFAULT_RECOGNITION_EXTENSIONS
-
+from   .config                  import DEFAULT_RECOGNITION_EXTENSIONS
 
 @dataclass
 class PersonMediaScanResult:

@@ -3,7 +3,7 @@
 # Licensed under the MIT License (https://opensource.org/licenses/MIT).
 # Part of the Person Recognition project for managing a knowledge base of known individuals and their associated media.
 #
-
+#
 from __future__ import annotations
 import json, os, pickle
 from collections import Counter, defaultdict
@@ -13,9 +13,9 @@ from pathlib import Path
 from typing import Any
 import numpy as np
 # local imports
-from kb_layout import iter_kb_person_dirs, kb_system_dirs
-from config    import PERSONS_DB_FILENAME, ENCODINGS_FILENAME, DEFAULT_RECOGNITION_EXTENSIONS, KB_SYSTEM_DIRS, VALID_SEVERITIES
-from encoding_bank_unpickler import load_encoding_bank
+from .kb_layout import iter_kb_person_dirs, kb_system_dirs
+from .config    import PERSONS_DB_FILENAME, ENCODINGS_FILENAME, DEFAULT_RECOGNITION_EXTENSIONS, KB_SYSTEM_DIRS, VALID_SEVERITIES
+from .encoding_bank_unpickler import load_encoding_bank
 
 @dataclass(frozen=True)
 class KBCompatibilityIssue:

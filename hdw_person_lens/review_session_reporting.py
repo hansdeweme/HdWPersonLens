@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 # local imports
-from kb_curation import KBCandidateStore
+from .kb_curation import KBCandidateStore
 
 REVIEW_SESSION_SCHEMA_VERSION = 1
 

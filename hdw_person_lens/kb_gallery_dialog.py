@@ -5,7 +5,6 @@
 # Part of the Person Recognition project for managing a knowledge base of known individuals and their associated media.
 #
 from __future__ import annotations
-
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -15,7 +14,7 @@ from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import (QAbstractItemView, QCheckBox, QDialog, QGroupBox, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMessageBox, 
                              QPlainTextEdit, QProgressBar, QPushButton, QSpinBox, QSplitter, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
 # local imports
-from kb_gallery_optimizer import (ACTION_ADD, ACTION_REMOVE, GalleryApplyResult, GalleryChangeSet, GalleryOptimizationReport, KBGalleryOptimizer, PersonGalleryProposal,
+from .kb_gallery_optimizer import (ACTION_ADD, ACTION_REMOVE, GalleryApplyResult, GalleryChangeSet, GalleryOptimizationReport, KBGalleryOptimizer, PersonGalleryProposal,
                                   apply_gallery_changes)
 
 ROLE_LABELS = {

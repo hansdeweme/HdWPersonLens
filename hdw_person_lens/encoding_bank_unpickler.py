@@ -4,7 +4,7 @@
 # Licensed under the MIT License (https://opensource.org/licenses/MIT).
 # Part of the Person Recognition project for managing a knowledge base of encoded face and body traits of known individuals and their associated media.
 #
-
+#
 import sys
 import pickle
 from pathlib import Path

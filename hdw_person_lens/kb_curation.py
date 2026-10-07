@@ -3,9 +3,8 @@
 # Copyright (c) 2025, 2026 Hans De Weme
 # Licensed under the MIT License (https://opensource.org/licenses/MIT).
 # Part of the Person Recognition project.
-
+#
 from __future__ import annotations
-import hashlib
 import json
 import os
 import threading
@@ -16,7 +15,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 #local imports
-from kb_utils import _sha256_file
+from .kb_utils import _sha256_file
 
 KB_CANDIDATE_SCHEMA_VERSION = 1
 ACTIVE_CANDIDATE_STATUSES = frozenset({'pending', 'deferred', 'promoted'})

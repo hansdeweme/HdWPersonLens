@@ -13,7 +13,7 @@ from   copy import deepcopy
 from   pathlib import Path
 from   typing import Any
 
-APP_NAME  =  "Person Recognition App"
+APP_NAME  =  "PersonLens"
 APP_DISPLAY_TITLE = "Managing Persons in Photo Collections"
 APP_VERSION = "v2.0.1"
 APP_AUTHOR = "Hans De Weme"

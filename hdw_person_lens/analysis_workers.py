@@ -4,13 +4,11 @@
 # Licensed under the MIT License (https://opensource.org/licenses/MIT).
 # Part of the Person Recognition project for managing a knowledge base of known individuals and their associated media.
 #
-
-
 # PyQt6 imports
 from PyQt6           import QtCore
 from PyQt6.QtCore    import pyqtSignal, QThread
 #local imports
-from kb_utils            import scan_person_media_folders, PersonMediaScanResult
+from .kb_utils            import scan_person_media_folders, PersonMediaScanResult
 
 
 #-----------------------------------------------------------------

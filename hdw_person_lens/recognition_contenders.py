@@ -3,7 +3,7 @@
 # Copyright (c) 2025, 2026 Hans De Weme
 # Licensed under the MIT License (https://opensource.org/licenses/MIT).
 # Part of the Person Recognition project.
-
+#
 from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any

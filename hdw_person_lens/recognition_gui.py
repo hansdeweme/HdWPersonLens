@@ -12,7 +12,7 @@ from collections     import Counter
 from pathlib         import Path
 from collections.abc import Sequence
 # preload torch before PyQt/Qt DLLs
-from native_bootstrap import preload_native_backends
+from .native_bootstrap import preload_native_backends
 preload_native_backends()
 # PyQt6 imports
 from PyQt6           import QtWidgets
@@ -21,27 +21,28 @@ from PyQt6           import QtGui
 from PyQt6.QtGui     import QAction, QTextCursor
 from PyQt6.QtWidgets import QApplication, QFileDialog, QMainWindow, QMessageBox, QPlainTextEdit, QDialog
 from PyQt6.QtCore    import QTimer, QThread
+#
+from hdw_dedup_engine         import DedupConfig
 # local imports
-from person_management_diags import SelectPersonDialog, AddPersonDialog, RemovePersonDialog, AlterPersonDialog, EditPersonImagesDialog  
-from unknown_review          import RecognitionReviewDialog
-from recognition_workers     import IdentifyWorker
-from analysis_workers        import MediaFolderScanWorker, CrossCompareWorker, ThresholdCalibrationWorker, KBCompatibilityWorker, LegacyKBUpgradeWorker
-from hdw_dedup_engine        import DedupConfig
-from dedup_worker            import DedupWorker
-from kb_layout               import is_kb_person_dir
-from kb_initialize           import initialize_v2_kb_workspace 
-from kb_manager              import KnowledgeBaseManager
-from person_db               import PersonDB
-from find_lookalikes         import show_lookalike_finder
-from browse_persons          import QueryPersonsDialog
-from recognition_gui_dialogs import AboutDialog, SettingsDialog, KBStatsDialog, SimilarPersonsDialog, FusedCompareDialog, IdentifyResultDialog, MediaFoldersReportDialog
-from person_db_gui           import PersonDbEditorWidget
-from person_service          import PersonService, ReencodeBatchResult
-from knowledge_workers       import ReencodePersonsWorker
-from kb_gallery_dialog       import KBGalleryOptimizerDialog
-from kb_curation             import KBCandidateStore
-from kb_curation_dialog      import KBCurationDialog
-from config                  import load_settings, save_settings, APP_DISPLAY_TITLE, PERSONS_DB_FILENAME, PERSON_SCHEMA_FILENAME, ENCODINGS_FILENAME, DEFAULT_RECOGNITION_EXTENSIONS
+from .person_management_diags import SelectPersonDialog, AddPersonDialog, RemovePersonDialog, AlterPersonDialog, EditPersonImagesDialog  
+from .unknown_review          import RecognitionReviewDialog
+from .recognition_workers     import IdentifyWorker
+from .analysis_workers        import MediaFolderScanWorker, CrossCompareWorker, ThresholdCalibrationWorker, KBCompatibilityWorker, LegacyKBUpgradeWorker
+from .dedup_worker            import DedupWorker
+from .kb_layout               import is_kb_person_dir
+from .kb_initialize           import initialize_v2_kb_workspace 
+from .kb_manager              import KnowledgeBaseManager
+from .person_db               import PersonDB
+from .find_lookalikes         import show_lookalike_finder
+from .browse_persons          import QueryPersonsDialog
+from .recognition_gui_dialogs import AboutDialog, SettingsDialog, KBStatsDialog, SimilarPersonsDialog, FusedCompareDialog, IdentifyResultDialog, MediaFoldersReportDialog
+from .person_db_gui           import PersonDbEditorWidget
+from .person_service          import PersonService, ReencodeBatchResult
+from .knowledge_workers       import ReencodePersonsWorker
+from .kb_gallery_dialog       import KBGalleryOptimizerDialog
+from .kb_curation             import KBCandidateStore
+from .kb_curation_dialog      import KBCurationDialog
+from .config                  import load_settings, save_settings, APP_DISPLAY_TITLE, PERSONS_DB_FILENAME, PERSON_SCHEMA_FILENAME, ENCODINGS_FILENAME, DEFAULT_RECOGNITION_EXTENSIONS
 
 DEBUG_SETTINGS = False
 

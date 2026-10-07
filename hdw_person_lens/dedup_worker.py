@@ -1,13 +1,14 @@
 # dedup_worker.py
-
-
+# Copyright (c) 2025, 2026 Hans De Weme
+# Licensed under the MIT License (https://opensource.org/licenses/MIT).
+# Part of the Person Recognition project for managing a knowledge base of known individuals and their associated media.
+#
 from __future__ import annotations
-
 import copy
 import os
-
+# PyQt imports
 from PyQt6 import QtCore
-
+#
 from hdw_dedup_engine import (
     DedupConfig,
     DedupRunOptions,

@@ -27,9 +27,9 @@ from   PyQt6.QtWidgets import QSpinBox, QCheckBox, QPushButton, QLabel, QFileDia
 from   PyQt6.QtCore    import Qt, QRegularExpression, QTimer, pyqtSignal
 from   PyQt6.QtGui     import QRegularExpressionValidator
 # local imports
-from person_db         import PersonDB
-from person_service    import PersonService
-from config import load_settings as load_app_settings, PERSONS_DB_FILENAME, PERSON_SCHEMA_FILENAME
+from .person_db         import PersonDB
+from .person_service    import PersonService
+from .config import load_settings as load_app_settings, PERSONS_DB_FILENAME, PERSON_SCHEMA_FILENAME
 
 def load_person_db_settings() -> dict:
     settings = load_app_settings()

@@ -3,14 +3,13 @@
 # Licensed under the MIT License (https://opensource.org/licenses/MIT).
 # Part of the Person Recognition project for managing a knowledge base of known individuals and their associated media.
 #
-
-
+#
 from __future__ import annotations
 from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import Any
 # local imports
-from config import KB_SYSTEM_DIRS
+from .config import KB_SYSTEM_DIRS
 
 def kb_system_dirs(settings: Mapping[str, Any] | None = None) -> set[str]:
     settings = settings or {}

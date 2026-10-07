@@ -599,7 +599,7 @@ class AboutDialog(QDialog):
         layout = QVBoxLayout()
 
         html = """
-        <h3>Person Recognition App</h3>
+        <h3>PersonLens</h3>
         <p>This application performs local face and body recognition using a customizable Knowledge base.</p>
         
         <h3>Person DB - Persons Descriptions by the Knowledge base</h3>

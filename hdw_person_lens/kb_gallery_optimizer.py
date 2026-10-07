@@ -5,9 +5,7 @@
 # Part of the Person Recognition project for managing a knowledge base of known individuals and their associated media.
 #
 from __future__ import annotations
-
 import csv
-import hashlib
 import json
 import math
 import os
@@ -21,9 +19,9 @@ from typing import Any
 import numpy as np
 from PIL import Image, ImageOps
 # local imports
-from kb_utils import _sha256_file
-from config   import DEFAULT_RECOGNITION_EXTENSIONS
-from encoding_bank_unpickler import load_encoding_bank
+from .kb_utils import _sha256_file
+from .config   import DEFAULT_RECOGNITION_EXTENSIONS
+from .encoding_bank_unpickler import load_encoding_bank
 
 GALLERY_ANALYSIS_VERSION = 1
 ROLE_FACE_ANCHOR = "face_anchor"

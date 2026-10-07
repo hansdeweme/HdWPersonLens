@@ -3,7 +3,7 @@
 # Copyright (c) 2025, 2026 Hans De Weme
 # Licensed under the MIT License (https://opensource.org/licenses/MIT).
 # Part of the Person Recognition project.
-
+#
 from __future__ import annotations
 import html
 from collections import Counter
@@ -16,7 +16,7 @@ from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import (QDialog, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMessageBox, QPushButton, QScrollArea, 
                              QSplitter, QTextEdit, QVBoxLayout, QWidget, QProgressBar, QPlainTextEdit)
 # local imports
-from kb_curation import KBCandidateStore, KBCurationResult, KBPromotionCandidate, apply_kb_curation_decisions
+from .kb_curation import KBCandidateStore, KBCurationResult, KBPromotionCandidate, apply_kb_curation_decisions
 
 class KBCurationDialog(QDialog):
     # Review pending KB candidates and apply staged decisions explicitly

@@ -17,8 +17,8 @@ from PyQt6.QtWidgets import (QPushButton, QFileDialog, QMessageBox, QLabel, QVBo
 from PyQt6.QtGui     import QPixmap, QBrush, QColor, QPen
 from PyQt6           import QtWidgets, QtGui, QtCore
 # local imports
-from recognition_contenders import ContenderSlateWidget
-from config                 import save_settings, ENCODINGS_FILENAME, DEFAULT_RECOGNITION_EXTENSIONS, APP_DISPLAY_TITLE, APP_NAME, APP_VERSION
+from .recognition_contenders import ContenderSlateWidget
+from .config                 import save_settings, ENCODINGS_FILENAME, DEFAULT_RECOGNITION_EXTENSIONS, APP_DISPLAY_TITLE, APP_NAME, APP_VERSION
 
 @dataclass(frozen=True)
 class InteractiveRecognitionDecision:

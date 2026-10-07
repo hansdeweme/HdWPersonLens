@@ -8,9 +8,9 @@ import os, shutil, datetime, csv
 # PyQt imports for threads
 from   PyQt6.QtCore import QThread, pyqtSignal
 # local imports
-from  kb_utils      import _normalize_exts
-from  recognition_decision import TargetMatchDecision, decide_target_match
-from  config        import DEFAULT_RECOGNITION_EXTENSIONS  
+from  .kb_utils      import _normalize_exts
+from  .recognition_decision import TargetMatchDecision, decide_target_match
+from  .config        import DEFAULT_RECOGNITION_EXTENSIONS  
 
 #-----------------------------------------------------
 # Helpers

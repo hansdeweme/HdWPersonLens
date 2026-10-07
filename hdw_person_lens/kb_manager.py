@@ -17,16 +17,15 @@ from   typing       import List, Tuple
 # PyQt imports for working with threads
 from   PyQt6.QtCore import QObject, pyqtSignal
 # local imports
-from   kb_layout    import iter_kb_person_dirs
-from   kb_utils     import _group_by_person, _calibrate_thresholds, ThresholdCalibrationReport, _robust_lookalike_stats
-from   kb_faces     import extract_primary_face_embedding
-from   kb_bodies    import TorchreidBodyExtractor, _cosine_pair_stats
-from   kb_compare   import _pairwise_person_distances
-from   kb_workers   import PersonSearcher, PersonRecursiveSearcher, BatchProcessor
-from   recognition_decision import _rank_body_identities, _rank_face_identities, _face_candidate, _body_candidate, decide_identity, build_identity_contenders
-from   config        import ENCODINGS_FILENAME, DEFAULT_RECOGNITION_EXTENSIONS
-from   encoding_bank_unpickler import load_encoding_bank
-
+from   .kb_layout    import iter_kb_person_dirs
+from   .kb_utils     import _group_by_person, _calibrate_thresholds, ThresholdCalibrationReport, _robust_lookalike_stats
+from   .kb_faces     import extract_primary_face_embedding
+from   .kb_bodies    import TorchreidBodyExtractor, _cosine_pair_stats
+from   .kb_compare   import _pairwise_person_distances
+from   .kb_workers   import PersonSearcher, PersonRecursiveSearcher, BatchProcessor
+from   .recognition_decision import _rank_body_identities, _rank_face_identities, _face_candidate, _body_candidate, decide_identity, build_identity_contenders
+from   .config        import ENCODINGS_FILENAME, DEFAULT_RECOGNITION_EXTENSIONS
+from   .encoding_bank_unpickler import load_encoding_bank
 import warnings
 # Torch’s future change: torch.load(weights_only=False) – torchreid triggers this
 warnings.filterwarnings(

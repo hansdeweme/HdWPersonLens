@@ -4,7 +4,6 @@
 # Licensed under the MIT License (https://opensource.org/licenses/MIT).
 # Part of the Person Recognition project for managing a knowledge base of encoded face and body traits of known individuals and their associated media.
 #
-
 import os, sys, subprocess
 # PyQt6 imports
 from PyQt6.QtCore    import Qt
@@ -12,7 +11,7 @@ from PyQt6.QtGui     import QPixmap
 from PyQt6.QtWidgets import (QPushButton, QMessageBox, QLabel, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem, QDialog, QSizePolicy, QMenu, 
                              QComboBox, QButtonGroup, QWidget, QGridLayout, QSizePolicy)
 # local imports                             
-from person_db      import PersonDB
+from .person_db      import PersonDB
 
 
 def _safe_int(value) -> int:

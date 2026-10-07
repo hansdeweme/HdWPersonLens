@@ -24,7 +24,7 @@ def preload_runtime_dependencies() -> None:
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv if argv is None else argv)
-    print("[Startup] Loading Person Recognition App...", flush=True)
+    print("[Startup] Loading PersonLens...", flush=True)
     apply_warning_filters()
     print("[Startup] Loading runtime dependencies...", flush=True)
     preload_runtime_dependencies()

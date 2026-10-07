@@ -1,4 +1,8 @@
 #kb_bodies.py
+# Copyright (c) 2025, 2026 Hans De Weme
+# Licensed under the MIT License (https://opensource.org/licenses/MIT).
+# Part of the Person Recognition project for managing a knowledge base of known individuals and their associated media.
+#
 # torchreid_extractor_pytorchDirectML.py
 # Robust Torchreid extractor with DirectML support, AIN→GN swap, and CPU fallback.
 from __future__ import annotations

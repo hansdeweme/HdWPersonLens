@@ -123,7 +123,7 @@ def _make_person_rows(names: list[str], destination_root: Path) -> list[dict[str
     return rows
 
 def _write_kb_version(destination_root: Path, *, source_root: Path, settings: dict[str, Any]) -> None:
-    payload = {"schema_version": 2, "created_by": "Person Recognition App", "created_at_utc": _utc_now(), "upgrade_mode": "legacy_copy",
+    payload = {"schema_version": 2, "created_by": "PersonLens", "created_at_utc": _utc_now(), "upgrade_mode": "legacy_copy",
                "legacy_source_root": str(source_root), "encodings_policy": "legacy encodings copied for reference; rebuild recommended",
                "reid_model": settings.get("reid_model") or settings.get("body_model") or "", "valid_extensions": list(_valid_exts(settings))}
     _write_json(destination_root / ".kb_version.json", payload)

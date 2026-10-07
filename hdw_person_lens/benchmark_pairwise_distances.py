@@ -1,12 +1,14 @@
 # benchmark_pairwise_distances.py
+# Copyright (c) 2025, 2026 Hans De Weme
+# Licensed under the MIT License (https://opensource.org/licenses/MIT).
+# Part of the Person Recognition project for managing a knowledge base of known individuals and their associated media.
+#
 from __future__ import annotations
-
 import argparse, itertools, statistics, time
 from collections.abc import Callable
-
 import numpy as np
-
-from kb_compare import _pairwise_person_distances as final_pairwise_person_distances
+# local imports
+from .kb_compare import _pairwise_person_distances as final_pairwise_person_distances
 
 
 def basic_inner_outer_loop(person_to_vecs: dict[str, list[np.ndarray]], *, min_images_per_person=1):

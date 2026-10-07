@@ -28,8 +28,8 @@ from typing import Any
 import tempfile
 import threading
 # local imports
-from kb_layout import iter_kb_person_dirs
-from config    import DEFAULT_RECOGNITION_EXTENSIONS
+from .kb_layout import iter_kb_person_dirs
+from .config    import DEFAULT_RECOGNITION_EXTENSIONS
 
 class PersonServiceError(RuntimeError):
     """Base error for coordinated person operations."""
