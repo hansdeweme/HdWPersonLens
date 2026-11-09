@@ -16,22 +16,40 @@ image review.
 
 ## Setup and launch
 
-The application currently runs as a collection of scripts, rather than an
-installable Python package. Use Python 3.13 on Windows and run commands from
-the repository root.
+PersonLens is an application with an internal Python package (`hdw_person_lens`)
+and a `personlens` command. Use Python 3.13 on Windows and run the following
+commands from the repository root.
 
-Install the local HdWDedupEngine wheel before the application dependencies.
-See [duplicate engine installation](docs/DEDUP_MIGRATION.md).
-The dependency snapshot includes GPU and platform-specific packages; choose
-the PyTorch build appropriate to your machine.
+**First-time setup:** Install the local HdWDedupEngine wheel first (see
+[duplicate engine installation](docs/DEDUP_MIGRATION.md)). The dependency
+snapshot includes GPU and platform-specific packages; choose the PyTorch build
+appropriate to your machine.
 
 ```powershell
 py -3.13 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
+python -m pip install -e .
 Copy-Item hdw_person_lens/settings.example.json hdw_person_lens/settings.json
-python hdw_person_lens/main.py
 ```
+
+**Run the application** (after activating `.venv`, from the repository root):
+
+```powershell
+personlens
+```
+
+Alternatively, run it directly as a Python module without installing the app
+itself (dependencies still need to be installed):
+
+```powershell
+py -3.13 -m hdw_person_lens.main
+```
+
+Do **not** use `python hdw_person_lens/main.py`: it bypasses the package context
+and fails on relative imports (`ImportError: attempted relative import with no
+known parent package`). The module and `personlens` entry points also preserve
+the required PyTorch-before-PyQt startup order.
 
 Edit `hdw_person_lens/settings.json` to point to your input, output, knowledge
 base, database, and schema locations. Relative application data paths resolve
