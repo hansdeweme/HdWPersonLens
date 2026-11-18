@@ -982,11 +982,16 @@ class IdentifyResultDialog(QtWidgets.QDialog):
         layout.addWidget(QtWidgets.QLabel("Recognition contenders:", self))
         self.contender_slate = ContenderSlateWidget(sample_getter=sample_getter, max_cards=3, parent=self)
         selected_name = final_name if disposition == "accepted" and final_name.casefold() != "unknown" else ""
-        self.contender_slate.set_contenders(self.result.get("contenders", []), selected_name=selected_name,
-                                            preselect_first=disposition == "review")
+        self.contender_slate.set_contenders(self.result.get("contenders", []), selected_name=selected_name, preselect_first=disposition == "review")
         layout.addWidget(self.contender_slate)
-        buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Close, parent=self)
+        self.queue_checkbox = QtWidgets.QCheckBox("Mark selected image for later KB consideration", self)
+        self.queue_checkbox.setChecked(False)
+        layout.addWidget(self.queue_checkbox)       
+        buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Ok | QtWidgets.QDialogButtonBox.StandardButton.Cancel, parent=self)
+        buttons.button(QtWidgets.QDialogButtonBox.StandardButton.Ok).setText("Confirm")
         layout.addWidget(buttons)
+        buttons.accepted.connect(self._confirm)
+        buttons.rejected.connect(self.reject)
         if isinstance(result, dict):
             btn_copy = QtWidgets.QPushButton("Copy JSON", self)
             buttons.addButton(btn_copy, QtWidgets.QDialogButtonBox.ButtonRole.ActionRole)
@@ -994,9 +999,13 @@ class IdentifyResultDialog(QtWidgets.QDialog):
         btn_open = QtWidgets.QPushButton("Open Image Folder", self)
         buttons.addButton(btn_open, QtWidgets.QDialogButtonBox.ButtonRole.ActionRole)
         btn_open.clicked.connect(lambda: QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(os.path.dirname(image_path))))
-        buttons.rejected.connect(self.reject)
-        buttons.accepted.connect(self.reject)       
 
+    def _confirm(self):
+        if self.queue_checkbox.isChecked() and not self.selected_person():
+            QtWidgets.QMessageBox.warning(self, "No Person Selected", "Select a person before queuing this image.")
+            return
+        self.accept()
+        
     def selected_person(self) -> str:
         return self.contender_slate.selected_name()
 
@@ -1004,8 +1013,9 @@ class IdentifyResultDialog(QtWidgets.QDialog):
         return self.contender_slate.selected_contender()
        
     def get_decision(self) -> InteractiveRecognitionDecision:
-        return InteractiveRecognitionDecision(person_name=self.selected_person, queue_for_kb=self.queue_checkbox.isChecked(),)
-
+        return InteractiveRecognitionDecision(
+            person_name=self.selected_person(), queue_for_kb=self.queue_checkbox.isChecked())
+    
     def _copy_json_to_clipboard(self):
         try:
             payload = self._make_clipboard_payload()
