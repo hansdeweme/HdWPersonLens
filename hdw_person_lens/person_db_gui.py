@@ -406,7 +406,7 @@ class PersonDbEditorWidget(QWidget):
         self.btn_validate = QPushButton("Validate", self.right_panel,)
         self.btn_save = QPushButton("Save (Create/Update)", self.right_panel,)
         self.btn_duplicate = QPushButton("Duplicate", self.right_panel,)
-        self.btn_delete = QPushButton("Delete", self.right_panel,)
+        self.btn_delete = QPushButton("Delete DB Record Only", self.right_panel,)
         self.btn_reload = QPushButton("Reload File", self.right_panel,)
         self.btn_export = QPushButton("Save File", self.right_panel,)
         self.btn_new.clicked.connect(self.on_new)
@@ -670,7 +670,7 @@ class PersonDbEditorWidget(QWidget):
             return
         if not key or not self._confirm_delete(key):
             return        
-        if QMessageBox.question(self, "Confirm delete", f"Delete '{key}'? This cannot be undone.") != QMessageBox.StandardButton.Yes:
+        if QMessageBox.question(self, "Delete DB Record Only", f"Delete the database record for '{key}'? This cannot be undone.\n\nThe KB recognition profile and media will be kept.") != QMessageBox.StandardButton.Yes:
             return
         try:
             deleted = self.person_db.delete_by_name(key)
@@ -685,7 +685,7 @@ class PersonDbEditorWidget(QWidget):
         self.refresh_list()
         self.record_deleted.emit(deleted_name        )
         self.on_new()
-        self._ok("Deleted.")
+        self._ok("Database record deleted; KB recognition profile and media kept.")
 
     def on_reload(self):
         try:

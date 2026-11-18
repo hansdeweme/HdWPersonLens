@@ -37,6 +37,7 @@ from .find_lookalikes         import show_lookalike_finder
 from .browse_persons          import QueryPersonsDialog
 from .recognition_gui_dialogs import AboutDialog, SettingsDialog, KBStatsDialog, SimilarPersonsDialog, FusedCompareDialog, IdentifyResultDialog, MediaFoldersReportDialog
 from .person_db_gui           import PersonDbEditorWidget
+from .persons_workbench       import PersonsWorkbench
 from .person_service          import PersonService, ReencodeBatchResult
 from .knowledge_workers       import ReencodePersonsWorker
 from .kb_gallery_dialog       import KBGalleryOptimizerDialog
@@ -91,6 +92,8 @@ class MainWindow(QMainWindow):
     
     # clean memory when closing
     def closeEvent(self, event):
+        if hasattr(self, "persons_workbench"):
+            self.persons_workbench.shutdown_portraits()
         try:
             manager = getattr(self, "knowledge_manager", None)
             if manager is not None and hasattr(manager, "close"):
@@ -148,16 +151,28 @@ class MainWindow(QMainWindow):
         self.person_db_editor.remove_person_requested.connect(self.open_remove_person)
         self.person_db_editor.add_recognition_requested.connect(self.open_add_person)
         self.main_tabs.addTab(self.person_db_editor, "Persons DB",)
+        # ---------- Persons Workbench tab ----------
+        self.persons_workbench = PersonsWorkbench(
+            self.person_db, self.person_service, self.settings, parent=self
+        )
+        self.persons_workbench.portrait_error.connect(self.display_message)
+        self.main_tabs.addTab(self.persons_workbench, "Persons Workbench")
         self.setCentralWidget(self.main_tabs)
 
     def _on_person_record_saved(self, person_name: str, ) -> None:
         self.display_message(f"[Persons DB] Saved record: " f"{person_name}")
+        if hasattr(self, "persons_workbench"):
+            self.persons_workbench.refresh()
 
     def _on_person_record_deleted(self, person_name: str, ) -> None:
         self.display_message(f"[Persons DB] Deleted record: " f"{person_name}" )
+        if hasattr(self, "persons_workbench"):
+            self.persons_workbench.refresh()
 
     def _on_person_database_reloaded(self, ) -> None:
         self.display_message("[Persons DB] Reloaded from file.")
+        if hasattr(self, "persons_workbench"):
+            self.persons_workbench.refresh()
    
     def _make_menubar(self):
         mb = self.menuBar()
@@ -1368,14 +1383,20 @@ class MainWindow(QMainWindow):
         )
         self.reset_progress_bar()
         self.statusBar().showMessage(f"Recognition profile created for {result.name}", 5000,)
+        if hasattr(self, "persons_workbench"):
+            self.persons_workbench.refresh()
 
     def _on_person_renamed(self, old_name: str, new_name: str, ) -> None:
         self.display_message(f"[PersonService] Renamed "f"{old_name} → {new_name}" )
         self.person_db_editor.refresh_from_database(force=True) 
+        if hasattr(self, "persons_workbench"):
+            self.persons_workbench.refresh()
 
     def _on_person_removed(self, person_name: str, ) -> None:
         self.display_message(f"[PersonService] Removed person: " f"{person_name}")
         self.person_db_editor.refresh_from_database(force=True)
+        if hasattr(self, "persons_workbench"):
+            self.persons_workbench.refresh()
 
     def edit_person_images(self):
         dialog = EditPersonImagesDialog(self.person_service, parent=self)
@@ -1385,6 +1406,8 @@ class MainWindow(QMainWindow):
     def _on_person_images_updated(self, name: str, added: int, removed: int) -> None:
         self.display_message(f"[PersonService] Updated images for {name}: +{added}, -{removed}." )
         self.reset_progress_bar()
+        if hasattr(self, "persons_workbench"):
+            self.persons_workbench.refresh()
     
     def reencode_single_person(self):
         face_names = self.knowledge_manager.persons.get("face_names", [])

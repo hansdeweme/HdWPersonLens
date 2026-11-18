@@ -7,8 +7,8 @@
 #
 import os, sys, subprocess
 # PyQt6 imports
-from PyQt6.QtCore    import Qt
-from PyQt6.QtGui     import QPixmap
+from PyQt6.QtCore    import Qt, QObject, QRunnable, QThreadPool, QTimer, pyqtSignal
+from PyQt6.QtGui     import QPixmap, QImageReader
 from PyQt6.QtWidgets import (QPushButton, QMessageBox, QLabel, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem, QDialog, QSizePolicy, QMenu, 
                              QComboBox, QButtonGroup, QWidget, QGridLayout, QSizePolicy)
 # local imports                             
@@ -44,6 +44,35 @@ def _birth_date_sort_key(value) -> int:
     month = _safe_int(value.get("month"))
     day = _safe_int(value.get("day"))
     return year * 10000 + month * 100 + day
+
+class _PreviewSignals(QObject):
+    ready = pyqtSignal(object, object)
+
+
+class _PreviewLoader(QRunnable):
+    def __init__(self, item, name, sample_getter, height):
+        super().__init__()
+        self.item, self.name = item, name
+        self.sample_getter, self.height = sample_getter, height
+        self.signals = _PreviewSignals()
+
+    def run(self):
+        try:
+            path = self.sample_getter(self.name)
+            reader = QImageReader(str(path or ""))
+            reader.setAutoTransform(True)
+            size = reader.size()
+            if size.isValid():
+                size.scale(256, self.height, Qt.AspectRatioMode.KeepAspectRatio)
+                reader.setScaledSize(size)
+            image = reader.read()
+            if not image.isNull():
+                image = image.scaled(256, self.height, Qt.AspectRatioMode.KeepAspectRatio,
+                                     Qt.TransformationMode.SmoothTransformation)
+            self.signals.ready.emit(self.item, image)
+        except Exception:
+            self.signals.ready.emit(self.item, None)
+
 
 class SortableTableItem(QTableWidgetItem):
     def __init__(self, text: str, sort_value=None):
@@ -102,6 +131,9 @@ class QueryPersonsDialog(QDialog):
         self._EXCLUDE_FROM_DYNAMIC = {p for p, _ in self.BASE_COLS} | {"files_path", "images", "notes", "#person_id"}        
         self.folder_getter = folder_getter
         self.sample_getter = sample_getter
+        self._preview_pool = QThreadPool(self)
+        self._preview_pool.setMaxThreadCount(2)
+        self._preview_jobs = {}
         self.setWindowTitle("Query Persons")
         self.resize(1150, 620)   # wider default to fit more columns
         self.all_rows = self.db.search(sort_by="personName")   # keep a copy to refilter
@@ -220,33 +252,52 @@ class QueryPersonsDialog(QDialog):
         return str(val), str(val).casefold()    
     
     def _populate_table(self, rows: list[dict]):
+        self.table.setSortingEnabled(False)
         self.table.setRowCount(len(rows))
-        self._row_bool_cache: list[dict[str, bool | None]] = []
 
         for r, rec in enumerate(rows):
             # write cells in declared column order
             for c, (path, label) in enumerate(self.columns):
                 if path == "~preview":
-                    lbl = QLabel(); lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                    if self.sample_getter:
-                        p = self.sample_getter(rec.get("personName", ""))
-                        if p and os.path.exists(p):
-                            pix = QPixmap(p).scaledToHeight(self.PREVIEW_HEIGHT, Qt.TransformationMode.SmoothTransformation)
-                            lbl.setPixmap(pix)
-                    self.table.setCellWidget(r, c, lbl)
+                    self.table.setItem(r, c, SortableTableItem("", ""))
                 else:
                     text, sort_value = self._display_value_and_sort_key(rec, path)
                     self.table.setItem(r, c, SortableTableItem(text, sort_value))
 
             # remember boolean values for this row for fast filtering
             row_bools = {bp: self._coerce_bool(self._value_at(rec, bp)) for bp in self.boolean_fields}
-            self._row_bool_cache.append(row_bools)
+            anchor = self.table.item(r, 0)
+            anchor.setData(Qt.ItemDataRole.UserRole, row_bools)
+            anchor.setData(Qt.ItemDataRole.UserRole + 1, rec.get("personName", ""))
 
         # nice defaults: sort by a defaulted column
         sort_idx, sort_order = self._default_sort_column()
         if sort_idx is not None:
             self.table.sortItems(sort_idx, sort_order)
+        self.table.setSortingEnabled(True)
+        self.table.verticalHeader().setDefaultSectionSize(self.PREVIEW_HEIGHT + 4)
         self.table.resizeColumnsToContents()
+        QTimer.singleShot(0, self._load_previews)
+
+    def _load_previews(self):
+        if not self.sample_getter:
+            return
+        column = len(self.columns) - 1
+        for row in range(self.table.rowCount()):
+            item = self.table.item(row, column)
+            name = self.table.item(row, 0).data(Qt.ItemDataRole.UserRole + 1)
+            job = _PreviewLoader(item, name, self.sample_getter, self.PREVIEW_HEIGHT)
+            job.signals.ready.connect(self._preview_ready)
+            self._preview_jobs[id(item)] = job
+            self._preview_pool.start(job)
+
+    def _preview_ready(self, item, image):
+        self._preview_jobs.pop(id(item), None)
+        if image is not None and not image.isNull():
+            try:
+                item.setData(Qt.ItemDataRole.DecorationRole, QPixmap.fromImage(image))
+            except RuntimeError:
+                pass  # A subsequent population may have replaced this item.
 
     def _auto_resize_width(self):
         self.table.resizeColumnsToContents()
@@ -255,7 +306,7 @@ class QueryPersonsDialog(QDialog):
         self.resize(max(self.width(), total), self.height())
 
     def _is_dynamic_excluded(self, path: str) -> bool:
-        if self._is_dynamic_excluded(path):
+        if path in self._EXCLUDE_FROM_DYNAMIC:
             return True
         return any(path.startswith(f"{base}.") for base, _label in self.BASE_COLS if "." not in base)
 
@@ -271,7 +322,7 @@ class QueryPersonsDialog(QDialog):
         n = self.table.rowCount()
         for r in range(n):
             keep = True
-            row_bools = self._row_bool_cache[r]
+            row_bools = self.table.item(r, 0).data(Qt.ItemDataRole.UserRole) or {}
             for key_path, state in active.items():
                 if state == 0:  # All
                     continue
@@ -344,7 +395,7 @@ class QueryPersonsDialog(QDialog):
 
         for rec in rows:
             for path, val in self._flatten(rec):
-                if path in self._EXCLUDE_FROM_DYNAMIC:
+                if self._is_dynamic_excluded(path):
                     continue
                 if isinstance(val, (dict, list)):
                     continue
@@ -391,21 +442,6 @@ class QueryPersonsDialog(QDialog):
             else:
                 yield (path, v)
 
-    def _display_value_and_sort_key(self, rec: dict, path: str):
-        val = self._value_at(rec, path)
-
-        if path == "birth date":
-            return _format_birth_date(val), _birth_date_sort_key(val)
-
-        if isinstance(val, bool):
-            return "✓" if val else "", int(val)
-        if isinstance(val, (int, float)):
-            return f"{float(val):.1f}", float(val)
-        if val is None:
-            return "", ""
-        if isinstance(val, (dict, list)):
-            return "", ""
-        return str(val), str(val).casefold()
 
     def _value_at(self, rec: dict, path: str):
         if not path:

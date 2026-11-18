@@ -10,6 +10,22 @@ import sys
 import warnings
 from pathlib import Path
 
+_crash_log = None
+
+
+def enable_crash_logging() -> None:
+    """Keep native crash tracebacks after Windows terminates the interpreter."""
+    import faulthandler
+    global _crash_log
+    try:
+        path = Path.home() / ".cache" / "HdWPersonLens" / "python-crash.log"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _crash_log = path.open("a", encoding="utf-8")
+        faulthandler.enable(file=_crash_log, all_threads=True)
+        print(f"[Startup] Native crash log: {path}", flush=True)
+    except OSError:
+        faulthandler.enable()
+
 def apply_warning_filters() -> None:
     warnings.filterwarnings("ignore", category=UserWarning, message=r"pkg_resources is deprecated as an API.*")
     warnings.filterwarnings("ignore", category=DeprecationWarning, message=r"pkg_resources is deprecated as an API.*")
@@ -23,6 +39,7 @@ def preload_runtime_dependencies() -> None:
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv if argv is None else argv)
     print("[Startup] Loading PersonLens...", flush=True)
+    enable_crash_logging()
     apply_warning_filters()
     print("[Startup] Loading runtime dependencies...", flush=True)
     preload_runtime_dependencies()

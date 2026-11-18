@@ -6,11 +6,16 @@
 # •	can directly compute a face embedding per aligned chip
 from __future__ import annotations
 from io import BytesIO
+from threading import Lock
 from typing import Any
 import cv2
 import numpy as np
 import face_recognition
 from PIL import Image
+
+# face_recognition reuses process-wide dlib detector/encoder instances. Concurrent
+# native calls can access-violate on Windows, including across portrait and KB jobs.
+_FACE_ANALYSIS_LOCK = Lock()
 # silence deprecation noise from face_recognition_models
 import warnings
 warnings.filterwarnings(
@@ -119,19 +124,20 @@ def extract_primary_face_embedding(
 
         rgb_detection = np.ascontiguousarray(rgb_detection, dtype=np.uint8)
 
-        locations = face_recognition.face_locations(
-            rgb_detection,
-            number_of_times_to_upsample=0,
-            model=detector_model,
-        )
-
-        if not locations and retry_upsample:
-            metadata["upsample"] = 1
+        with _FACE_ANALYSIS_LOCK:
             locations = face_recognition.face_locations(
                 rgb_detection,
-                number_of_times_to_upsample=1,
+                number_of_times_to_upsample=0,
                 model=detector_model,
             )
+
+            if not locations and retry_upsample:
+                metadata["upsample"] = 1
+                locations = face_recognition.face_locations(
+                    rgb_detection,
+                    number_of_times_to_upsample=1,
+                    model=detector_model,
+                )
 
         if not locations:
             metadata["status"] = "no_usable_face"
@@ -169,12 +175,13 @@ def extract_primary_face_embedding(
             face_width * face_height
         ) / float(width * height)
 
-        encodings = face_recognition.face_encodings(
-            rgb_full,
-            known_face_locations=[selected],
-            num_jitters=num_jitters,
-            model=embedding_model,
-        )
+        with _FACE_ANALYSIS_LOCK:
+            encodings = face_recognition.face_encodings(
+                rgb_full,
+                known_face_locations=[selected],
+                num_jitters=num_jitters,
+                model=embedding_model,
+            )
 
         if not encodings:
             metadata["status"] = "face_encoding_failed"
