@@ -43,8 +43,8 @@ def run(scenario):
     host.main_tabs.addTab(workbench, "Persons Workbench")
     host.setCentralWidget(host.main_tabs)
     host.resize(1000, 700)
-    workbench.portrait_service._sources = lambda name: [("unused.png", 1, 1)]
-    workbench.portrait_service.cached_portrait = lambda name, sources: (False, None)
+    workbench.portrait_service._sources = lambda name, **kw: [("unused.png", 1, 1)]
+    workbench.portrait_service.cached_portrait = lambda name, sources, **kw: (False, None)
     errors = []
     workbench.portrait_error.connect(errors.append)
     children = []

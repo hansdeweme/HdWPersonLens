@@ -19,14 +19,15 @@ class PortraitProcessRunner:
 
     def get_portrait(self, name):
         # Only filesystem inspection happens here; dlib runs in the child.
-        sources = self.service._sources(name)
-        if not sources:
+        request = self.service.prepare_request(name)
+        if not request.sources:
             return None
-        hit, cached = self.service.cached_portrait(name, sources)
+        hit, cached = self.service.cached_portrait(name, request.sources, signature=request.signature)
         if hit:
             return cached
         payload = json.dumps({
-            "name": name, "paths": [source[0] for source in sources],
+            "name": name, "preferred": request.preferred,
+            "sources": request.sources, "signature": request.signature,
             "size": self.service.size, "max_candidates": self.service.max_candidates,
             "cache_dir": str(self.service.cache_dir.resolve()),
         }).encode("utf-8")

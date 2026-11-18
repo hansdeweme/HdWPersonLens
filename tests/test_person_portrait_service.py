@@ -35,6 +35,11 @@ def load_module():
     return module.PersonPortraitService, calls
 
 
+def current_cache_paths(service, name):
+    request = service.prepare_request(name)
+    return service._cache_paths(name, request.signature)
+
+
 class FakePersonService:
     def __init__(self, files): self.files = files
     def get_person_image_paths(self, name): return self.files.get(name, [])
@@ -72,6 +77,51 @@ class PortraitTests(unittest.TestCase):
         with patch.dict(global_functions, {"extract_primary_face_embedding": lambda *a, **kw: (object(), {"detected_count": 2})}):
             self.assertIsNone(service.get_portrait("Ada"))
 
+    def test_preference_persists_and_invalidates_cache(self):
+        first, second = self.root / "a.png", self.root / "b.png"
+        Image.new("RGB", (100, 100), "red").save(first)
+        Image.new("RGB", (100, 100), "blue").save(second)
+        service = self.service_class(FakePersonService({"Ada": [str(first), str(second)]}), cache_dir=self.root / "cache")
+        original = service.get_portrait("Ada")
+        service.set_preferred_image("Ada", second)
+        self.assertEqual(service.preferred_image("Ada"), str(second.resolve()))
+        self.assertNotEqual(service.get_portrait("Ada"), original)
+        restored = self.service_class(service.person_service, cache_dir=self.root / "cache")
+        self.assertEqual(restored.preferred_image("Ada"), str(second.resolve()))
+        restored.reset_preferred_image("Ada")
+        self.assertIsNone(restored.preferred_image("Ada"))
+        self.assertEqual(restored.get_portrait("Ada"), original)
+
+    def test_outside_kb_preference_rejected(self):
+        source = self.root / "outside.png"
+        Image.new("RGB", (100, 100), "red").save(source)
+        service = self.service_class(FakePersonService({"Ada": []}), cache_dir=self.root / "cache")
+        with self.assertRaises(ValueError): service.set_preferred_image("Ada", source)
+
+    def test_overlapping_generations_never_mix_png_and_signature(self):
+        first, second = self.root / "a.png", self.root / "b.png"
+        Image.new("RGB", (100, 100), "red").save(first)
+        Image.new("RGB", (100, 100), "blue").save(second)
+        service = self.service_class(FakePersonService({"Ada": [str(first), str(second)]}), cache_dir=self.root / "cache")
+        auto_sources = service._sources("Ada")
+        auto_signature = service._signature("Ada", auto_sources)
+        auto_bytes = service.get_portrait("Ada")
+        service.set_preferred_image("Ada", second)
+        preferred_sources = service._sources("Ada")
+        preferred_signature = service._signature("Ada", preferred_sources)
+        preferred_bytes = service.get_portrait("Ada")
+        self.assertNotEqual(auto_signature, preferred_signature)
+        self.assertNotEqual(service._cache_paths("Ada", auto_signature)[1], service._cache_paths("Ada", preferred_signature)[1])
+        # Simulate the old automatic worker publishing its metadata LAST.
+        old_meta, old_png = service._cache_paths("Ada", auto_signature)
+        service._atomic_bytes(old_png, auto_bytes)
+        service._atomic_bytes(old_meta, ('{"signature": "%s"}' % auto_signature).encode("utf-8"))
+        cold_start = self.service_class(service.person_service, cache_dir=self.root / "cache")
+        hit, data = cold_start.cached_portrait("Ada", cold_start._sources("Ada"))
+        self.assertTrue(hit)
+        self.assertEqual(data, preferred_bytes)
+
+
     def test_add_replace_remove_only_invalidates_changed_person(self):
         ada = self.root / "ada.png"
         bob = self.root / "bob.png"
@@ -82,7 +132,7 @@ class PortraitTests(unittest.TestCase):
         service = self.service_class(people, cache_dir=self.root / "cache")
         service.get_portrait("Ada")
         bob_data = service.get_portrait("Bob")
-        bob_paths = service._cache_paths("Bob")
+        bob_paths = current_cache_paths(service, "Bob")
         bob_snapshot = [(p.read_bytes(), p.stat().st_mtime_ns) for p in bob_paths]
 
         def check_changed_person(candidate_count):

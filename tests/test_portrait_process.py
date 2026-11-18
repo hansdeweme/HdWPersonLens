@@ -19,8 +19,9 @@ spec.loader.exec_module(module)
 
 def make_runner(timeout=5):
     service = SimpleNamespace(
-        _sources=lambda name: [("unused.png", 1, 1)],
-        cached_portrait=lambda name, sources: (False, None),
+        prepare_request=lambda name: SimpleNamespace(
+            sources=(("unused.png", 1, 1),), preferred=None, signature="snapshot"),
+        cached_portrait=lambda name, sources, **kw: (False, None),
         size=224, max_candidates=24, cache_dir=Path.cwd(),
     )
     return module.PortraitProcessRunner(service, timeout=timeout)
@@ -75,7 +76,7 @@ def test_shutdown_interrupts_active_analysis():
 
 def test_cache_hit_does_not_launch_child():
     runner = make_runner()
-    runner.service.cached_portrait = lambda name, sources: (True, b"cached")
+    runner.service.cached_portrait = lambda name, sources, **kw: (True, b"cached")
     with patch.object(module.subprocess, "Popen") as launch:
         assert runner.get_portrait("Ada") == b"cached"
         launch.assert_not_called()

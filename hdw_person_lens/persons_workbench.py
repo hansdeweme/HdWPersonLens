@@ -17,10 +17,12 @@ This first slice deliberately leaves the existing Persons DB editor and manageme
 dialogs untouched. Portraits and KB gallery are extension points, not yet loaded.
 """
 from __future__ import annotations
+from pathlib import Path
 from PyQt6.QtCore import (QAbstractTableModel, QEvent, QModelIndex, QObject, QRunnable, QSize, QSortFilterProxyModel,
                           QThreadPool, QTimer, Qt, pyqtSignal)
 from PyQt6.QtGui import QImage, QPixmap
-from PyQt6.QtWidgets import (QApplication, QAbstractItemView, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
+from PyQt6.QtWidgets import (QApplication, QAbstractItemView, QFormLayout, QHBoxLayout, QInputDialog, QLabel, QLineEdit,
+                             QMessageBox, QPushButton,
                              QSplitter, QTableView, QVBoxLayout, QWidget)
 from .person_portrait_service import PersonPortraitService
 from .portrait_process import PortraitProcessRunner
@@ -200,6 +202,14 @@ class PersonsWorkbench(QWidget):
         self.portrait.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.portrait.setMinimumHeight(140)
         detail_layout.addWidget(self.portrait)
+        portrait_actions = QHBoxLayout()
+        choose_portrait = QPushButton("Choose KB portrait…")
+        reset_portrait = QPushButton("Reset to Automatic")
+        choose_portrait.clicked.connect(self._choose_preferred_portrait)
+        reset_portrait.clicked.connect(self._reset_preferred_portrait)
+        portrait_actions.addWidget(choose_portrait)
+        portrait_actions.addWidget(reset_portrait)
+        detail_layout.addLayout(portrait_actions)
         self.name_label = QLabel("Select a person")
         detail_layout.addWidget(self.name_label)
         self.details_form = QFormLayout()
@@ -304,6 +314,34 @@ class PersonsWorkbench(QWidget):
     def _current_person_name(self):
         index = self.table.currentIndex()
         return self.proxy.data(index, PersonRosterModel.NAME_ROLE) if index.isValid() else ""
+
+    def _choose_preferred_portrait(self):
+        name = self._current_person_name()
+        if not name: return
+        paths = self.person_service.get_person_image_paths(name)
+        if not paths:
+            QMessageBox.information(self, "No KB images", "This person has no KB reference images.")
+            return
+        labels = [Path(path).name for path in paths]
+        current = self.portrait_service.preferred_image(name)
+        index = next((i for i, path in enumerate(paths) if str(Path(path).resolve()) == current), 0)
+        choice, ok = QInputDialog.getItem(self, "Preferred portrait", "Choose a KB reference image:", labels, index, False)
+        if not ok: return
+        try: self.portrait_service.set_preferred_image(name, paths[labels.index(choice)])
+        except (ValueError, OSError) as exc:
+            QMessageBox.warning(self, "Preferred portrait", str(exc))
+            return
+        self.refresh()
+        self.portrait_status.setText("Preferred image saved; multi-face images fall back to automatic selection.")
+
+    def _reset_preferred_portrait(self):
+        name = self._current_person_name()
+        if not name: return
+        try: self.portrait_service.reset_preferred_image(name)
+        except OSError as exc:
+            QMessageBox.warning(self, "Reset portrait", str(exc))
+            return
+        self.refresh()
 
     def _on_current_row(self, current, _previous):
         name = self.proxy.data(current, PersonRosterModel.NAME_ROLE) if current.isValid() else ""

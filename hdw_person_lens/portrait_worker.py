@@ -16,18 +16,18 @@ def main():
     faulthandler.enable()
     request = json.loads(sys.stdin.buffer.read().decode("utf-8"))
 
-    class Sources:
-        def get_person_image_paths(self, name):
-            return request["paths"]
-
     # Preserve stdout exclusively for PNG bytes, including during native imports.
     with contextlib.redirect_stdout(sys.stderr):
-        from .person_portrait_service import PersonPortraitService
+        from .person_portrait_service import PersonPortraitService, PortraitRequest
         service = PersonPortraitService(
-            Sources(), size=request["size"], max_candidates=request["max_candidates"],
+            None, size=request["size"], max_candidates=request["max_candidates"],
             cache_dir=request["cache_dir"],
         )
-        data = service.get_portrait(request["name"])
+        snapshot = PortraitRequest(
+            request["name"], request["preferred"],
+            tuple(tuple(source) for source in request["sources"]), request["signature"],
+        )
+        data = service.get_portrait(request["name"], request=snapshot)
     if data:
         sys.stdout.buffer.write(data)
         sys.stdout.buffer.flush()
