@@ -7,6 +7,7 @@ from PyQt6.QtCore import QObject, QRunnable, QThreadPool, Qt, pyqtSignal
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget
 
 from .kb_collection_assessment import CollectionAssessmentRunner
+from .kb_reference_recommendations import source_snapshot
 
 
 class _AssessmentSignals(QObject):
@@ -19,6 +20,7 @@ class _AssessmentJob(QRunnable):
         self.setAutoDelete(False)
         self.generation, self.paths, self.runner = generation, paths, runner
         self.token = runner.request_token()
+        self.source_snapshot = source_snapshot(paths)
         self.signals = _AssessmentSignals()
 
     def run(self):
@@ -29,6 +31,8 @@ class _AssessmentJob(QRunnable):
 
 class PersonKBCollectionPanel(QWidget):
     """Display quality and duplicate evidence; never suggest or perform deletion."""
+    assessment_ready = pyqtSignal(object)
+    assessment_invalidated = pyqtSignal()
     def __init__(self, parent=None):
         super().__init__(parent)
         self._generation = 0
@@ -56,6 +60,7 @@ class PersonKBCollectionPanel(QWidget):
 
     def set_person(self, _name, paths):
         if self._stopping: return
+        self.assessment_invalidated.emit()
         self._generation += 1
         self._cancel_queued()
         self._runner.cancel_active()
@@ -66,6 +71,7 @@ class PersonKBCollectionPanel(QWidget):
 
     def analyze(self):
         if self._stopping or not self._paths: return
+        self.assessment_invalidated.emit()
         self._generation += 1
         self._cancel_queued()
         self._runner.cancel_active()
@@ -77,13 +83,19 @@ class PersonKBCollectionPanel(QWidget):
         self._pool.start(job)
 
     def _finished(self, generation, result, error):
-        self._jobs.pop(generation, None)
+        job = self._jobs.pop(generation, None)
         if self._stopping or generation != self._generation: return
         self.analyze_button.setEnabled(bool(self._paths))
         self.results.clear()
         if not result:
             self.summary.setText(f"Collection assessment unavailable: {error or 'unknown failure'}")
             return
+        if job is None or job.source_snapshot != source_snapshot(self._paths):
+            self.summary.setText("KB images changed during analysis; rerun collection assessment")
+            self.assessment_invalidated.emit()
+            return
+        result = dict(result, source_snapshot=job.source_snapshot)
+        self.assessment_ready.emit(result)
         errors = len(result["errors"])
         suffix = " · first 250 only" if result["truncated"] else ""
         self.summary.setText(f"{result['analyzed']}/{result['total']} analyzed · "
