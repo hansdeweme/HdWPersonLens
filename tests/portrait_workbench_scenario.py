@@ -115,6 +115,9 @@ def run(scenario):
                 host.close()
                 app.processEvents()
             assert not workbench._portrait_runner._processes
+            assert workbench.recommendations._thumb_stopping
+            assert workbench.recommendations._thumb_pool.activeThreadCount() == 0
+            assert not workbench.recommendations._thumb_jobs
             assert workbench._portrait_pool.activeThreadCount() == 0
             assert all(child.poll() is not None for child in children)
             app.processEvents()

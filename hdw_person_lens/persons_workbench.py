@@ -294,6 +294,7 @@ class PersonsWorkbench(QWidget):
         if self._portrait_stopping: return
         self._portrait_stopping = True
         self._portrait_generation += 1
+        self.recommendations.shutdown()
         self.identity.shutdown()
         self.collection.shutdown()
         self.gallery.shutdown()
