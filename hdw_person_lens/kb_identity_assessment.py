@@ -41,6 +41,19 @@ def evaluate_consensus(records, *, threshold=0.425):
     return {"status": "consensus", "consensus": len(supported), "usable": len(good), "records": records}
 
 
+def _supported_distances(records):
+    """Export distances, not biometric vectors, for supported references only."""
+    import numpy as np
+
+    rows = sorted((r for r in records if r.get("identity_finding") == "supported" and r.get("embedding") is not None),
+                  key=lambda row: row["path"])
+    if not rows: return {"paths": [], "matrix": [], "metric": "euclidean_face_embedding"}
+    vectors = np.asarray([r["embedding"] for r in rows], dtype=np.float64)
+    distances = np.linalg.norm(vectors[:, None, :] - vectors[None, :, :], axis=2)
+    return {"paths": [r["path"] for r in rows], "matrix": distances.round(6).tolist(),
+            "metric": "euclidean_face_embedding"}
+
+
 def assess_identity(paths, *, threshold=0.425, max_images=100):
     """Run the existing native face embedding pipeline on KB images only."""
     from PIL import Image, ImageOps
@@ -61,6 +74,7 @@ def assess_identity(paths, *, threshold=0.425, max_images=100):
             record["error"] = str(exc)
         records.append(record)
     result = evaluate_consensus(records, threshold=threshold)
+    result["supported_distances"] = _supported_distances(result["records"]) if result["status"] == "consensus" else None
     for record in result["records"]: record.pop("embedding", None)
     result.update({"total": len(paths), "analyzed": len(records), "truncated": len(paths) > max_images,
                    "threshold": threshold})

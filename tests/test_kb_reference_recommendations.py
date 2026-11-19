@@ -59,7 +59,8 @@ class RecommendationTests(unittest.TestCase):
         report = module.build_recommendations(*fixture(), target_size=1)
         shortlisted = [r for r in report["rows"] if r["recommendation"] == "shortlist"]
         self.assertEqual([r["path"] for r in shortlisted], ["a"])
-        self.assertIn("sharpness/resolution", shortlisted[0]["reason"])
+        self.assertEqual(shortlisted[0]["score"], round(.75 * ((110 - 40) / 80) + .25 * (1200 / 1800), 3))
+        self.assertIn("technical", shortlisted[0]["reason"])
 
     def test_unreadable_images_remain_in_review_findings(self):
         collection, identity = fixture()

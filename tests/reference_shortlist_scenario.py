@@ -70,9 +70,11 @@ def run():
 
         def selected():
             wb.recommendations.build()
+            proposal_column = next(i for i in range(wb.recommendations.results.columnCount())
+                                   if wb.recommendations.results.headerItem().text(i) == "Proposal")
             return {Path(wb.recommendations.results.topLevelItem(i).toolTip(0)).name
                     for i in range(wb.recommendations.results.topLevelItemCount())
-                    if wb.recommendations.results.topLevelItem(i).text(2) == "Shortlist"}
+                    if wb.recommendations.results.topLevelItem(i).text(proposal_column) == "Shortlist"}
 
         def snapshot():
             return {str(p.relative_to(root)): (hashlib.sha256(p.read_bytes()).hexdigest(), p.stat().st_mtime_ns)
@@ -88,6 +90,21 @@ def run():
             assert wb.recommendations.button.isEnabled()
             assert selected() == {"a.png", "c.png"}
             assert snapshot() == before, "Analysis/recommendations wrote files"
+
+            # Malformed child evidence must not escape the Build button's slot.
+            wb.recommendations._identity["supported_distances"] = {
+                "metric": "euclidean_face_embedding", "paths": [["invalid"]], "matrix": [[0]],
+            }
+            assert selected() == {"a.png", "c.png"}
+            assert "quality-only" in wb.recommendations.summary.text()
+            supported = [r["path"] for r in wb.recommendations._identity["records"]
+                         if r["identity_finding"] == "supported"]
+            wb.recommendations._identity["supported_distances"] = {
+                "metric": "euclidean_face_embedding", "paths": supported,
+                "matrix": ["0" * len(supported)] * len(supported),
+            }
+            assert selected() == {"a.png", "c.png"}
+            assert "quality-only" in wb.recommendations.summary.text()
 
             state["identity"] = "ambiguous"
             wb.identity.analyze()

@@ -13,6 +13,7 @@ class PersonKBRecommendationPanel(QWidget):
     def __init__(self, settings=None, parent=None, *, source_getter=None):
         super().__init__(parent)
         self.target_size = max(1, int((settings or {}).get("kb_gallery_target_size", 12)))
+        self.diversity_weight = float((settings or {}).get("kb_gallery_diversity_weight", 0.35))
         self._paths = []
         self._person = ""
         self._source_getter = source_getter
@@ -30,7 +31,7 @@ class PersonKBRecommendationPanel(QWidget):
         header.addWidget(self.summary, 1)
         layout.addLayout(header)
         self.results = QTreeWidget()
-        self.results.setHeaderLabels(["Image", "Tech score", "Proposal", "Why"])
+        self.results.setHeaderLabels(["Image", "Tech score", "Novelty", "Proposal", "Why"])
         self.results.setMinimumHeight(170)
         self.results.setMaximumHeight(310)
         layout.addWidget(self.results)
@@ -90,11 +91,13 @@ class PersonKBRecommendationPanel(QWidget):
             self._update_ready()
             self.summary.setText("KB images changed since analysis; refresh or rerun both analyses")
             return
-        result = build_recommendations(self._collection, self._identity, target_size=self.target_size)
+        result = build_recommendations(self._collection, self._identity, target_size=self.target_size,
+                                       diversity_weight=self.diversity_weight)
         self.summary.setText(f"{result['shortlisted']} proposed / {self.target_size} target · {result['reason']}")
         self.results.clear()
         for row in result["rows"]:
-            item = QTreeWidgetItem([Path(row["path"]).name, f"{row['score']:.3f}",
+            novelty = f"{row['novelty']:.2f}" if row["novelty"] is not None else "—"
+            item = QTreeWidgetItem([Path(row["path"]).name, f"{row['score']:.3f}", novelty,
                                     row["recommendation"].title(), row["reason"]])
             item.setToolTip(0, row["path"])
             self.results.addTopLevelItem(item)
