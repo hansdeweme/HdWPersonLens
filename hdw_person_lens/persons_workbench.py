@@ -22,7 +22,7 @@ from PyQt6.QtCore import (QAbstractTableModel, QEvent, QModelIndex, QObject, QRu
                           QThreadPool, QTimer, Qt, pyqtSignal)
 from PyQt6.QtGui import QImage, QPixmap
 from PyQt6.QtWidgets import (QApplication, QAbstractItemView, QFormLayout, QHBoxLayout, QLabel, QLineEdit,
-                             QMessageBox, QPushButton, QScrollArea, QSplitter, QTableView, QVBoxLayout, QWidget)
+                             QMessageBox, QPushButton, QScrollArea, QSplitter, QTabWidget, QTableView, QVBoxLayout, QWidget)
 from .person_portrait_service import PersonPortraitService
 from .portrait_process import PortraitProcessRunner
 from .person_kb_gallery import PersonKBImageGallery
@@ -201,34 +201,20 @@ class PersonsWorkbench(QWidget):
 
         details = QWidget()
         detail_layout = QVBoxLayout(details)
+        detail_layout.setContentsMargins(6, 6, 6, 6)
+        self.name_label = QLabel("Select a person")
+        detail_layout.addWidget(self.name_label)
         self.portrait = QLabel("Portrait pending")
         self.portrait.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.portrait.setMinimumHeight(140)
+        self.portrait.setMaximumHeight(224)
         detail_layout.addWidget(self.portrait)
-        portrait_actions = QHBoxLayout()
-        choose_portrait = QPushButton("Set Selected as Preferred")
-        reset_portrait = QPushButton("Reset to Automatic")
-        choose_portrait.clicked.connect(self._choose_preferred_portrait)
-        reset_portrait.clicked.connect(self._reset_preferred_portrait)
-        portrait_actions.addWidget(choose_portrait)
-        portrait_actions.addWidget(reset_portrait)
-        detail_layout.addLayout(portrait_actions)
-        self.name_label = QLabel("Select a person")
-        detail_layout.addWidget(self.name_label)
-        self.gallery = PersonKBImageGallery(self)
-        detail_layout.addWidget(self.gallery)
-        self.collection = PersonKBCollectionPanel(self)
-        detail_layout.addWidget(self.collection)
-        self.identity = PersonKBIdentityPanel(self.settings, self)
-        detail_layout.addWidget(self.identity)
-        self.recommendations = PersonKBRecommendationPanel(
-            self.settings, self, source_getter=self.person_service.get_person_image_paths
-        )
-        detail_layout.addWidget(self.recommendations)
-        self.collection.assessment_ready.connect(self.recommendations.set_collection)
-        self.identity.assessment_ready.connect(self.recommendations.set_identity)
-        self.collection.assessment_invalidated.connect(self.recommendations.invalidate_collection)
-        self.identity.assessment_invalidated.connect(self.recommendations.invalidate_identity)
+        self.detail_tabs = QTabWidget()
+        self._gallery_pending = None
+        detail_layout.addWidget(self.detail_tabs, 1)
+
+        profile = QWidget()
+        profile_layout = QVBoxLayout(profile)
         self.details_form = QFormLayout()
         self.fields = {}
         for path, label in columns:
@@ -236,21 +222,81 @@ class PersonsWorkbench(QWidget):
             field.setWordWrap(True)
             self.details_form.addRow(label + ":", field)
             self.fields[path] = field
-        detail_layout.addLayout(self.details_form)
+        profile_layout.addLayout(self.details_form)
         self.kb_status = QLabel("KB status: —")
-        detail_layout.addWidget(self.kb_status)
-        detail_layout.addStretch()
-        details_scroll = QScrollArea()
-        details_scroll.setWidgetResizable(True)
-        details_scroll.setWidget(details)
-        self.splitter.addWidget(details_scroll)
+        profile_layout.addWidget(self.kb_status)
+        profile_layout.addStretch()
+        self.detail_tabs.addTab(self._scroll_section(profile), "Profile")
+
+        gallery_page = QWidget()
+        gallery_layout = QVBoxLayout(gallery_page)
+        self.gallery = PersonKBImageGallery(self)
+        portrait_actions = QHBoxLayout()
+        choose_portrait = QPushButton("Set Selected as Preferred")
+        reset_portrait = QPushButton("Reset to Automatic")
+        choose_portrait.clicked.connect(self._choose_preferred_portrait)
+        reset_portrait.clicked.connect(self._reset_preferred_portrait)
+        portrait_actions.addWidget(choose_portrait)
+        portrait_actions.addWidget(reset_portrait)
+        gallery_layout.addLayout(portrait_actions)
+        gallery_layout.addWidget(self.gallery)
+        gallery_layout.addStretch()
+        self.detail_tabs.addTab(self._scroll_section(gallery_page), "KB Gallery")
+
+        assessment = QWidget()
+        assessment_layout = QVBoxLayout(assessment)
+        self.collection = PersonKBCollectionPanel(self)
+        assessment_layout.addWidget(self.collection)
+        self.identity = PersonKBIdentityPanel(self.settings, self)
+        assessment_layout.addWidget(self.identity)
+        self.recommendations = PersonKBRecommendationPanel(self.settings, self,
+                                                           source_getter=self.person_service.get_person_image_paths)
+        assessment_layout.addWidget(self.recommendations)
+        self.collection.assessment_ready.connect(self.recommendations.set_collection)
+        self.identity.assessment_ready.connect(self.recommendations.set_identity)
+        self.collection.assessment_invalidated.connect(self.recommendations.invalidate_collection)
+        self.identity.assessment_invalidated.connect(self.recommendations.invalidate_identity)
+        assessment_layout.addStretch()
+        self.detail_tabs.addTab(self._scroll_section(assessment), "KB Assessment")
+        self.detail_tabs.currentChanged.connect(self._on_detail_tab_changed)
+        self.splitter.addWidget(details)
         self.splitter.setSizes([620, 380])
         root.addWidget(self.splitter, 1)
         self.table.sortByColumn(1, Qt.SortOrder.AscendingOrder)
         QTimer.singleShot(0, self._load_visible_portraits)
 
+    @staticmethod
+    def _scroll_section(widget):
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(widget)
+        return scroll
+
+    def _on_detail_tab_changed(self, index):
+        if index == 1:
+            QTimer.singleShot(0, self._load_pending_gallery)
+
+    def _load_pending_gallery(self):
+        # Parent show events can precede child visibility; callers defer until
+        # Qt has finished showing the selected inner/outer tab.
+        if (self._portrait_stopping or self._gallery_pending is None or
+                not self.isVisible() or self.detail_tabs.currentIndex() != 1 or
+                not self.gallery.isVisible()):
+            return
+        name, paths, preferred = self._gallery_pending
+        self._gallery_pending = None
+        self.gallery.set_person(name, paths, preferred)
+
+    def _set_gallery_person(self, name, paths, preferred=None):
+        self._gallery_pending = (name, list(paths), preferred) if name else None
+        if name and self.isVisible() and self.detail_tabs.currentIndex() == 1 and self.gallery.isVisible():
+            self._load_pending_gallery()
+            return
+        self.gallery.set_person("", [])  # Invalidate prior jobs without decoding the hidden gallery.
+
     def showEvent(self, event):
         super().showEvent(event)
+        QTimer.singleShot(0, self._load_pending_gallery)
         self._schedule_visible_portraits()
         self._request_portrait(self._current_person_name())
 
@@ -384,7 +430,7 @@ class PersonsWorkbench(QWidget):
         for path, label in self.fields.items(): label.setText(_display_value(_value_at(record, path), path) or "—")
         kb_paths = self.person_service.get_person_image_paths(name)
         self.recommendations.set_person(name, kb_paths)
-        self.gallery.set_person(name, kb_paths, self.portrait_service.preferred_image(name))
+        self._set_gallery_person(name, kb_paths, self.portrait_service.preferred_image(name))
         self.collection.set_person(name, kb_paths)
         self.identity.set_person(name, kb_paths)
         self.kb_status.setText("KB status available in a later slice")
@@ -395,7 +441,7 @@ class PersonsWorkbench(QWidget):
         self.name_label.setText("Select a person")
         self.portrait.clear()
         self.portrait.setText("Portrait pending")
-        self.gallery.set_person("", [])
+        self._set_gallery_person("", [])
         self.collection.set_person("", [])
         self.identity.set_person("", [])
         for label in self.fields.values(): label.setText("—")

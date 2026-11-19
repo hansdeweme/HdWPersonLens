@@ -168,6 +168,8 @@ def full_check(root):
         print("PASS: changed preference during process launch did not alter the frozen request or poison automatic cache", flush=True)
 
         def choose(path):
+            wb.detail_tabs.setCurrentIndex(1)
+            app.processEvents()  # The gallery is populated lazily after showing.
             row = next(i for i in range(wb.gallery.images.count())
                        if wb.gallery.images.item(i).data(Qt.ItemDataRole.UserRole) == str(path))
             wb.gallery.images.setCurrentRow(row)
