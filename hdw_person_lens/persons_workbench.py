@@ -26,6 +26,7 @@ from PyQt6.QtWidgets import (QApplication, QAbstractItemView, QFormLayout, QHBox
 from .person_portrait_service import PersonPortraitService
 from .portrait_process import PortraitProcessRunner
 from .person_kb_gallery import PersonKBImageGallery
+from .person_kb_collection import PersonKBCollectionPanel
 
 
 class _PortraitSignals(QObject):
@@ -214,6 +215,8 @@ class PersonsWorkbench(QWidget):
         detail_layout.addWidget(self.name_label)
         self.gallery = PersonKBImageGallery(self)
         detail_layout.addWidget(self.gallery)
+        self.collection = PersonKBCollectionPanel(self)
+        detail_layout.addWidget(self.collection)
         self.details_form = QFormLayout()
         self.fields = {}
         for path, label in columns:
@@ -279,6 +282,7 @@ class PersonsWorkbench(QWidget):
         if self._portrait_stopping: return
         self._portrait_stopping = True
         self._portrait_generation += 1
+        self.collection.shutdown()
         self.gallery.shutdown()
         for key, job in list(self._portrait_pending.items()):
             if self._portrait_pool.tryTake(job):
@@ -364,7 +368,9 @@ class PersonsWorkbench(QWidget):
             self.portrait.setText("Portrait unavailable" if name in self._portrait_failures else "Portrait pending")
             self._request_portrait(name)
         for path, label in self.fields.items(): label.setText(_display_value(_value_at(record, path), path) or "—")
-        self.gallery.set_person(name, self.person_service.get_person_image_paths(name), self.portrait_service.preferred_image(name))
+        kb_paths = self.person_service.get_person_image_paths(name)
+        self.gallery.set_person(name, kb_paths, self.portrait_service.preferred_image(name))
+        self.collection.set_person(name, kb_paths)
         self.kb_status.setText("KB status available in a later slice")
         self.person_selected.emit(name)
 
@@ -373,5 +379,6 @@ class PersonsWorkbench(QWidget):
         self.portrait.clear()
         self.portrait.setText("Portrait pending")
         self.gallery.set_person("", [])
+        self.collection.set_person("", [])
         for label in self.fields.values(): label.setText("—")
         self.kb_status.setText("KB status: —")
