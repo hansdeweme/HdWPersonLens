@@ -38,6 +38,11 @@ class _ThumbnailJob(QRunnable):
 
 class PersonKBRecommendationPanel(QWidget):
     """Displays provisional suggestions; does not write files or selection decisions."""
+    shortlist_ready = pyqtSignal(object)
+    shortlist_invalidated = pyqtSignal()
+    shortlist_started = pyqtSignal()
+    shortlist_failed = pyqtSignal(str)
+    sources_stale = pyqtSignal(str)
     def __init__(self, settings=None, parent=None, *, source_getter=None):
         super().__init__(parent)
         self.target_size = max(1, int((settings or {}).get("kb_gallery_target_size", 12)))
@@ -125,6 +130,7 @@ class PersonKBRecommendationPanel(QWidget):
     def _clear_views(self):
         self._rebuild_timer.stop()
         self._built = False
+        self.shortlist_invalidated.emit()
         self.results.clear()
         self.quality_cards.clear()
         self.diversity_cards.clear()
@@ -191,18 +197,29 @@ class PersonKBRecommendationPanel(QWidget):
 
     def build(self):
         if self._thumb_stopping: return
-        if self._collection is None or self._identity is None: return
+        if self._collection is None or self._identity is None:
+            self.sources_stale.emit("Run collection and identity analyses before building a shortlist")
+            return
         if not self._reports_current():
             self._collection = self._identity = None
             self._reset_thumbnails()
             self._clear_views()
             self._update_ready()
             self.summary.setText("KB images changed since analysis; refresh or rerun both analyses")
+            self.sources_stale.emit("KB source evidence changed; rerun Collection and Identity")
             return
-        result = build_recommendations(self._collection, self._identity, target_size=self.target_size,
-                                       diversity_weight=self.diversity_weight)
-        baseline = build_recommendations(self._collection, self._identity, target_size=self.target_size,
-                                         diversity_weight=0)
+        self.shortlist_started.emit()
+        try:
+            result = build_recommendations(self._collection, self._identity, target_size=self.target_size,
+                                           diversity_weight=self.diversity_weight)
+            baseline = build_recommendations(self._collection, self._identity, target_size=self.target_size,
+                                             diversity_weight=0)
+        except Exception as exc:
+            self._clear_views()
+            message = f"Shortlist unavailable: {exc}"
+            self.summary.setText(message)
+            self.shortlist_failed.emit(message)
+            return
         diverse_paths = {r["path"] for r in result["rows"] if r["recommendation"] == "shortlist"}
         baseline_paths = {r["path"] for r in baseline["rows"] if r["recommendation"] == "shortlist"}
         changed = len(diverse_paths - baseline_paths)
@@ -218,6 +235,7 @@ class PersonKBRecommendationPanel(QWidget):
                                     row["recommendation"].title(), row["reason"]])
             item.setToolTip(0, row["path"])
             self.results.addTopLevelItem(item)
+        self.shortlist_ready.emit(result)
 
     def _fill_cards(self, cards, rows, added):
         cards.clear()

@@ -36,6 +36,9 @@ class _IdentityJob(QRunnable):
 class PersonKBIdentityPanel(QWidget):
     assessment_ready = pyqtSignal(object)
     assessment_invalidated = pyqtSignal()
+    assessment_started = pyqtSignal()
+    assessment_failed = pyqtSignal(str)
+    assessment_stale = pyqtSignal(str)
     def __init__(self, settings=None, parent=None):
         super().__init__(parent)
         self.threshold = float((settings or {}).get("kb_gallery_face_identity_max",
@@ -80,6 +83,7 @@ class PersonKBIdentityPanel(QWidget):
         job.signals.finished.connect(self._finished)
         self._jobs[self._generation] = job
         self.button.setEnabled(False)
+        self.assessment_started.emit()
         self.summary.setText("Comparing face embeddings in isolated native process…")
         self._pool.start(job)
 
@@ -90,10 +94,12 @@ class PersonKBIdentityPanel(QWidget):
         self.results.clear()
         if result is None:
             self.summary.setText(f"Identity assessment unavailable: {error or 'unknown failure'}")
+            self.assessment_failed.emit(error or "Identity assessment unavailable")
             return
         if job is None or job.source_snapshot != source_snapshot(self._paths):
             self.summary.setText("KB images changed during analysis; rerun identity assessment")
             self.assessment_invalidated.emit()
+            self.assessment_stale.emit("KB sources changed during identity analysis; rerun identity")
             return
         result = dict(result, source_snapshot=job.source_snapshot)
         self.assessment_ready.emit(result)

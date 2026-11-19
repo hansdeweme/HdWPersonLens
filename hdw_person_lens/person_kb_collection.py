@@ -33,6 +33,9 @@ class PersonKBCollectionPanel(QWidget):
     """Display quality and duplicate evidence; never suggest or perform deletion."""
     assessment_ready = pyqtSignal(object)
     assessment_invalidated = pyqtSignal()
+    assessment_started = pyqtSignal()
+    assessment_failed = pyqtSignal(str)
+    assessment_stale = pyqtSignal(str)
     def __init__(self, parent=None):
         super().__init__(parent)
         self._generation = 0
@@ -79,6 +82,7 @@ class PersonKBCollectionPanel(QWidget):
         job.signals.finished.connect(self._finished)
         self._jobs[self._generation] = job
         self.analyze_button.setEnabled(False)
+        self.assessment_started.emit()
         self.summary.setText("Analyzing collection in isolated process…")
         self._pool.start(job)
 
@@ -89,10 +93,12 @@ class PersonKBCollectionPanel(QWidget):
         self.results.clear()
         if not result:
             self.summary.setText(f"Collection assessment unavailable: {error or 'unknown failure'}")
+            self.assessment_failed.emit(error or "Collection assessment unavailable")
             return
         if job is None or job.source_snapshot != source_snapshot(self._paths):
             self.summary.setText("KB images changed during analysis; rerun collection assessment")
             self.assessment_invalidated.emit()
+            self.assessment_stale.emit("KB sources changed during collection analysis; rerun collection")
             return
         result = dict(result, source_snapshot=job.source_snapshot)
         self.assessment_ready.emit(result)

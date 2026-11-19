@@ -29,6 +29,7 @@ from .person_kb_gallery import PersonKBImageGallery
 from .person_kb_collection import PersonKBCollectionPanel
 from .person_kb_identity import PersonKBIdentityPanel
 from .person_kb_recommendations import PersonKBRecommendationPanel
+from .person_kb_assessment_workflow import PersonKBAssessmentWorkflow
 
 
 class _PortraitSignals(QObject):
@@ -256,6 +257,11 @@ class PersonsWorkbench(QWidget):
         self.identity.assessment_ready.connect(self.recommendations.set_identity)
         self.collection.assessment_invalidated.connect(self.recommendations.invalidate_collection)
         self.identity.assessment_invalidated.connect(self.recommendations.invalidate_identity)
+        self.assessment_flow = PersonKBAssessmentWorkflow(
+            self.collection, self.identity, self.recommendations, self,
+            prepare_collection=self._prepare_assessment_sources,
+        )
+        assessment_layout.insertWidget(0, self.assessment_flow)
         assessment_layout.addStretch()
         self.detail_tabs.addTab(self._scroll_section(assessment), "KB Assessment")
         self.detail_tabs.currentChanged.connect(self._on_detail_tab_changed)
@@ -429,6 +435,7 @@ class PersonsWorkbench(QWidget):
             self._request_portrait(name)
         for path, label in self.fields.items(): label.setText(_display_value(_value_at(record, path), path) or "—")
         kb_paths = self.person_service.get_person_image_paths(name)
+        self.assessment_flow.set_person(name, kb_paths)
         self.recommendations.set_person(name, kb_paths)
         self._set_gallery_person(name, kb_paths, self.portrait_service.preferred_image(name))
         self.collection.set_person(name, kb_paths)
@@ -437,6 +444,7 @@ class PersonsWorkbench(QWidget):
         self.person_selected.emit(name)
 
     def _clear_details(self):
+        self.assessment_flow.set_person("", [])
         self.recommendations.set_person("", [])
         self.name_label.setText("Select a person")
         self.portrait.clear()
@@ -446,3 +454,14 @@ class PersonsWorkbench(QWidget):
         self.identity.set_person("", [])
         for label in self.fields.values(): label.setText("—")
         self.kb_status.setText("KB status: —")
+
+    def _prepare_assessment_sources(self):
+        """Refresh read-only assessment inputs on an explicit guided restart."""
+        if self._portrait_stopping:
+            return []
+        name = self._current_person_name()
+        paths = self.person_service.get_person_image_paths(name) if name else []
+        self.recommendations.set_person(name, paths)
+        self.collection.set_person(name, paths)
+        self.identity.set_person(name, paths)
+        return paths
