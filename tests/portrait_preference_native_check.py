@@ -19,7 +19,16 @@ from hdw_person_lens import portrait_process
 from hdw_person_lens.persons_workbench import PersonsWorkbench
 from PIL import Image, ImageOps
 from PyQt6.QtGui import QImage
-from PyQt6.QtWidgets import QApplication, QInputDialog
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QApplication, QMessageBox
+
+_launch_process = subprocess.Popen
+
+
+def require_portrait_cache_hit(command, **kwargs):
+    if "hdw_person_lens.portrait_worker" in command:
+        raise AssertionError("Expected portrait cache hit")
+    return _launch_process(command, **kwargs)
 
 
 class Sources:
@@ -74,7 +83,7 @@ def restart_check(root):
     state = json.loads((root / "state.json").read_text())
     app, wb = make_workbench(root)
     try:
-        with patch.object(portrait_process.subprocess, "Popen", side_effect=AssertionError("Restart should hit cache")):
+        with patch.object(portrait_process.subprocess, "Popen", side_effect=require_portrait_cache_hit):
             wait_for_portrait(app, wb)
         service = wb.portrait_service
         assert service.preferred_image("Ada") == state["preferred"]
@@ -152,14 +161,17 @@ def full_check(root):
             with patch.object(portrait_process.subprocess, "Popen", side_effect=change_preference_then_launch):
                 assert race_runner.get_portrait("Ada") == automatic_png
             race_service.reset_preferred_image("Ada")
-            with patch.object(portrait_process.subprocess, "Popen", side_effect=AssertionError("Expected snapshot cache hit")):
+            with patch.object(portrait_process.subprocess, "Popen", side_effect=require_portrait_cache_hit):
                 assert race_runner.get_portrait("Ada") == automatic_png
         finally:
             race_runner.close()
         print("PASS: changed preference during process launch did not alter the frozen request or poison automatic cache", flush=True)
 
         def choose(path):
-            with patch.object(QInputDialog, "getItem", return_value=(path.name, True)):
+            row = next(i for i in range(wb.gallery.images.count())
+                       if wb.gallery.images.item(i).data(Qt.ItemDataRole.UserRole) == str(path))
+            wb.gallery.images.setCurrentRow(row)
+            with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes):
                 wb._choose_preferred_portrait()
             wait_for_portrait(app, wb)
 

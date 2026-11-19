@@ -21,11 +21,11 @@ from pathlib import Path
 from PyQt6.QtCore import (QAbstractTableModel, QEvent, QModelIndex, QObject, QRunnable, QSize, QSortFilterProxyModel,
                           QThreadPool, QTimer, Qt, pyqtSignal)
 from PyQt6.QtGui import QImage, QPixmap
-from PyQt6.QtWidgets import (QApplication, QAbstractItemView, QFormLayout, QHBoxLayout, QInputDialog, QLabel, QLineEdit,
-                             QMessageBox, QPushButton,
-                             QSplitter, QTableView, QVBoxLayout, QWidget)
+from PyQt6.QtWidgets import (QApplication, QAbstractItemView, QFormLayout, QHBoxLayout, QLabel, QLineEdit,
+                             QMessageBox, QPushButton, QScrollArea, QSplitter, QTableView, QVBoxLayout, QWidget)
 from .person_portrait_service import PersonPortraitService
 from .portrait_process import PortraitProcessRunner
+from .person_kb_gallery import PersonKBImageGallery
 
 
 class _PortraitSignals(QObject):
@@ -203,7 +203,7 @@ class PersonsWorkbench(QWidget):
         self.portrait.setMinimumHeight(140)
         detail_layout.addWidget(self.portrait)
         portrait_actions = QHBoxLayout()
-        choose_portrait = QPushButton("Choose KB portrait…")
+        choose_portrait = QPushButton("Set Selected as Preferred")
         reset_portrait = QPushButton("Reset to Automatic")
         choose_portrait.clicked.connect(self._choose_preferred_portrait)
         reset_portrait.clicked.connect(self._reset_preferred_portrait)
@@ -212,6 +212,8 @@ class PersonsWorkbench(QWidget):
         detail_layout.addLayout(portrait_actions)
         self.name_label = QLabel("Select a person")
         detail_layout.addWidget(self.name_label)
+        self.gallery = PersonKBImageGallery(self)
+        detail_layout.addWidget(self.gallery)
         self.details_form = QFormLayout()
         self.fields = {}
         for path, label in columns:
@@ -223,7 +225,10 @@ class PersonsWorkbench(QWidget):
         self.kb_status = QLabel("KB status: —")
         detail_layout.addWidget(self.kb_status)
         detail_layout.addStretch()
-        self.splitter.addWidget(details)
+        details_scroll = QScrollArea()
+        details_scroll.setWidgetResizable(True)
+        details_scroll.setWidget(details)
+        self.splitter.addWidget(details_scroll)
         self.splitter.setSizes([620, 380])
         root.addWidget(self.splitter, 1)
         self.table.sortByColumn(1, Qt.SortOrder.AscendingOrder)
@@ -271,8 +276,10 @@ class PersonsWorkbench(QWidget):
             self.portrait.setText("Portrait unavailable")
 
     def shutdown_portraits(self):
+        if self._portrait_stopping: return
         self._portrait_stopping = True
         self._portrait_generation += 1
+        self.gallery.shutdown()
         for key, job in list(self._portrait_pending.items()):
             if self._portrait_pool.tryTake(job):
                 self._portrait_pending.pop(key, None)
@@ -318,16 +325,15 @@ class PersonsWorkbench(QWidget):
     def _choose_preferred_portrait(self):
         name = self._current_person_name()
         if not name: return
-        paths = self.person_service.get_person_image_paths(name)
-        if not paths:
-            QMessageBox.information(self, "No KB images", "This person has no KB reference images.")
+        path = self.gallery.selected_path()
+        if not path:
+            QMessageBox.information(self, "Select KB image", "Select a reference image in the gallery first.")
             return
-        labels = [Path(path).name for path in paths]
-        current = self.portrait_service.preferred_image(name)
-        index = next((i for i, path in enumerate(paths) if str(Path(path).resolve()) == current), 0)
-        choice, ok = QInputDialog.getItem(self, "Preferred portrait", "Choose a KB reference image:", labels, index, False)
-        if not ok: return
-        try: self.portrait_service.set_preferred_image(name, paths[labels.index(choice)])
+        message = (f"Set {Path(path).name} as the preferred portrait for {name}?\n\n"
+                   "The isolated face pipeline will generate its crop afterward. "
+                   "Images without exactly one usable face fall back to automatic selection.")
+        if QMessageBox.question(self, "Confirm preferred portrait", message) != QMessageBox.StandardButton.Yes: return
+        try: self.portrait_service.set_preferred_image(name, path)
         except (ValueError, OSError) as exc:
             QMessageBox.warning(self, "Preferred portrait", str(exc))
             return
@@ -358,6 +364,7 @@ class PersonsWorkbench(QWidget):
             self.portrait.setText("Portrait unavailable" if name in self._portrait_failures else "Portrait pending")
             self._request_portrait(name)
         for path, label in self.fields.items(): label.setText(_display_value(_value_at(record, path), path) or "—")
+        self.gallery.set_person(name, self.person_service.get_person_image_paths(name), self.portrait_service.preferred_image(name))
         self.kb_status.setText("KB status available in a later slice")
         self.person_selected.emit(name)
 
@@ -365,5 +372,6 @@ class PersonsWorkbench(QWidget):
         self.name_label.setText("Select a person")
         self.portrait.clear()
         self.portrait.setText("Portrait pending")
+        self.gallery.set_person("", [])
         for label in self.fields.values(): label.setText("—")
         self.kb_status.setText("KB status: —")

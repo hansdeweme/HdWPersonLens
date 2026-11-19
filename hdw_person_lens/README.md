@@ -1,49 +1,58 @@
-# PersonLens Preferred Portraits — v0.3 initial slice
+# PersonLens Persons Workbench ? v0.5 stable baseline
 
-This package builds on the **committed process-isolated** application snapshot supplied on 18 November 2026.
+The v0.5 baseline combines persistent preferred portraits, a visual KB gallery,
+and a read-only face-crop preview. The Git tag is `v0.5`; package metadata is `0.5.0`.
 
-## Files to replace
+## Workbench
 
-- `hdw_person_lens/person_portrait_service.py`
-- `hdw_person_lens/persons_workbench.py`
-- `hdw_person_lens/portrait_process.py`
-- `hdw_person_lens/portrait_worker.py`
+- Browse and search the person roster, with asynchronous cached portraits.
+- Select a person to view KB image thumbnails and metadata in the scrollable details panel.
+- Select a gallery image to view its original and a 224 ? 224 face crop.
+- Click **Set Selected as Preferred** and confirm, or **Reset to Automatic**.
 
-Update these four files together: the service, process runner, and child worker share the same request snapshot. `kb_faces.py`, `person_service.py`, and `recognition_gui.py` retain the Phase 1 implementation.
+Preferences are separate `.preferred.json` files in the per-user portrait cache.
+The preferred image must be returned by `PersonService.get_person_image_paths(name)`.
+It is included first in the bounded scan of up to 24 KB images. Unusable, missing,
+or multi-face preferred images fall back to qualifying automatic candidates.
 
-## New behavior
+## Isolation and caching
 
-1. Select someone in Persons Workbench.
-2. Click **Choose KB portrait…** and select an existing KB image by filename.
-3. The preference is saved under the per-user portrait cache as a separate `.preferred.json` file, not in the Persons DB or KB folder.
-4. Refresh invalidates the displayed portrait; the existing process-isolated pipeline regenerates the crop from the preferred image if it has exactly one usable face.
-5. Click **Reset to Automatic** to remove the preference and restore automatic selection.
+Portrait and face-crop detection run in disposable child processes. The GUI does
+not call dlib. The preview uses the portrait service's single-face rules and crop
+geometry, without writing KB images, preferences, or portrait cache files.
 
-The source-selection limit is still 24 images per person; the preferred image is moved to the front of that bounded scan, even when it originally appeared later in the KB directory. The original cache signature now includes the preferred image path, so changing/resetting a choice invalidates only the affected person's portrait.
+Portrait requests capture their preference, sources, and signature once before
+crossing the process boundary. Positive files are named
+`<person-hash>.<signature>.png`; legacy `<person-hash>.png` files are ignored and
+left untouched. Changing a preference invalidates only that person's cache key.
 
-Each request captures its preference, candidate files, and signature once and passes that snapshot to the child process. Positive cache files use `<person-hash>.<signature>.png`, so overlapping requests cannot mix another signature's image bytes with their metadata. Legacy `<person-hash>.png` entries are ignored and left untouched.
-
-## Guardrails
-
-- Manual preferences must refer to files returned by `PersonService.get_person_image_paths(name)`; no arbitrary file paths or KB mutations.
-- The GUI never calls dlib; its existing `PortraitProcessRunner` still launches disposable native child processes.
-- Multi-face/undetectable preferred images are **not forced**: they fall back to the best qualifying automatic candidate. The preference remains stored until reset.
-- A deleted preferred source likewise falls back automatically. It does not delete or rewrite the preference.
-- The UI currently uses a filename picker. A thumbnail gallery and crop-before-confirmation interaction are **not** included in this initial v0.3 slice.
-- There is no independent face-embedding identity verification yet; a single-face KB image remains a provisional identity assumption.
+The gallery cancels obsolete queued previews, preserves thumbnail jobs, and runs
+at most one native crop analysis at a time. Shutdown cancels queued work, terminates
+active crop processes, and waits for active original-image decoders. Repeated
+shutdown is safe. Launch failures and unexpected crop-job exceptions report a
+completion/error signal so subsequent selections can proceed.
 
 ## Validation
 
-The portrait suite passes 23 automated tests, including both cache-race regressions, preference persistence, fallback, legacy-cache preservation, process cleanup, 20 refresh/tab-switch cycles, and forced-process-failure recovery.
+The portrait and preview regression suite passes 27 tests, covering preference
+persistence, both cache races, fallback, legacy-cache preservation, child cleanup,
+20 refresh/tab-switch cycles, forced failures, launch errors, and worker recovery.
 
-The native Windows integration check in `tests/portrait_preference_native_check.py` also passed using disposable copies of KB images:
+Run the focused suite with:
 
-- Choose a single-face KB image and confirm it becomes the roster and detail portrait.
-- Restart PersonLens and confirm the preference persists and loads from cache.
-- Reset to Automatic and confirm restoration of the prior automatic choice.
-- Select a photo with multiple faces and verify safe fallback without a crash.
-- Remove/replace a selected KB image; verify fallback and no KB writes.
-- Repeat the 20-cycle tab/refresh/shutdown and forced-process-failure tests from the committed baseline.
-- Change the preference during child-process launch and confirm the frozen request cannot poison the automatic cache.
+```powershell
+py -3 -m pytest tests/test_person_portrait_service.py tests/test_preferred_portraits.py tests/test_portrait_process.py tests/test_workbench_portrait_lifecycle.py tests/test_kb_faces_thread_safety.py tests/test_face_crop_preview.py -q
+```
 
-The native check uses offscreen Qt windows and real face detection, including a fresh application process to verify cache reuse. Original KB images remain untouched. The thumbnail gallery remains a later slice.
+`tests/portrait_preference_native_check.py` checks real face detection and offscreen
+Qt integration using disposable KB copies, including a fresh application process.
+Native gallery checks also verified matching portrait/crop output, zero/multiple-face
+explanations, latest-only queued analysis, failure recovery, and shutdown cleanup.
+Original KB images remained untouched.
+
+## Limits
+
+Active original-image decodes finish before shutdown returns. A single-face KB image
+is still a provisional identity assumption; there is no independent embedding-based
+identity verification. Selecting a preferred image confirms the source, not a custom
+editable crop.

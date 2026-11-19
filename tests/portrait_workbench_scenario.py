@@ -37,7 +37,10 @@ def run(scenario):
     host.settings = {}
     host.main_tabs = QTabWidget()
     activity = QWidget()
-    workbench = PersonsWorkbench(Database(), None)
+    class EmptyKB:
+        def get_person_image_paths(self, name):
+            return []
+    workbench = PersonsWorkbench(Database(), EmptyKB())
     host.persons_workbench = workbench
     host.main_tabs.addTab(activity, "Activity")
     host.main_tabs.addTab(workbench, "Persons Workbench")
