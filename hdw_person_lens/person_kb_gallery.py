@@ -36,7 +36,7 @@ class _ImageJob(QRunnable):
 
 
 class _CropSignals(QObject):
-    loaded = pyqtSignal(int, str, object, str)
+    loaded = pyqtSignal(int, str, object, str, object)
 
 
 class _CropJob(QRunnable):
@@ -47,11 +47,9 @@ class _CropJob(QRunnable):
         self.signals = _CropSignals()
 
     def run(self):
-        try:
-            data, error = self.runner.preview(self.path)
-        except Exception as exc:
-            data, error = None, f"Face analysis failed: {exc}"
-        self.signals.loaded.emit(self.generation, self.path, data, error)
+        try: data, error, metadata = self.runner.assess(self.path)
+        except Exception as exc: data, error, metadata = None, f"Unexpected preview failure: {exc}", {}
+        self.signals.loaded.emit(self.generation, self.path, data, error, metadata)
 
 
 class PersonKBImageGallery(QWidget):
@@ -65,6 +63,7 @@ class PersonKBImageGallery(QWidget):
         self._generation = 0
         self._jobs = {}
         self._crop_jobs = {}
+        self._quality = {}
         self._stopping = False
         self._pool = QThreadPool(self)
         self._pool.setMaxThreadCount(2)
@@ -81,7 +80,7 @@ class PersonKBImageGallery(QWidget):
         self.images.setMovement(QListWidget.Movement.Static)
         self.images.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.images.setIconSize(QSize(84, 84))
-        self.images.setGridSize(QSize(106, 108))
+        self.images.setGridSize(QSize(120, 125))
         self.images.setMinimumHeight(150)
         self.images.setMaximumHeight(220)
         self.images.currentItemChanged.connect(self._on_selection)
@@ -99,6 +98,9 @@ class PersonKBImageGallery(QWidget):
         self.crop_preview.setWordWrap(True)
         layout.addWidget(QLabel("Face crop (preview only — not saved)"))
         layout.addWidget(self.crop_preview)
+        self.quality_label = QLabel("Quality metrics appear after face analysis; they do not verify identity")
+        self.quality_label.setWordWrap(True)
+        layout.addWidget(self.quality_label)
         self.filename = QLabel("")
         self.filename.setWordWrap(True)
         layout.addWidget(self.filename)
@@ -108,12 +110,14 @@ class PersonKBImageGallery(QWidget):
         self._generation += 1
         self._cancel_queued()
         self._cancel_queued_crops()
+        self._quality.clear()
         self.person_name, self.paths = name, list(paths)
         self.images.clear()
         self.preview.clear()
         self.preview.setText("Select a KB image to preview")
         self.crop_preview.clear()
         self.crop_preview.setText("Select a KB image to inspect its face crop")
+        self.quality_label.setText("Quality metrics appear after face analysis; they do not verify identity")
         self.filename.clear()
         self.heading.setText(f"KB reference images ({len(self.paths)})")
         for path in self.paths:
@@ -146,6 +150,7 @@ class PersonKBImageGallery(QWidget):
         self.preview.setText("Loading preview…" if path else "Select a KB image to preview")
         self.crop_preview.clear()
         self.crop_preview.setText("Analyzing face in isolated process…" if path else "Select a KB image to inspect its face crop")
+        self._show_quality(path)
         self.filename.setText(Path(path).name if path else "")
         if path:
             self._enqueue(path, 640, priority=1)
@@ -161,15 +166,48 @@ class PersonKBImageGallery(QWidget):
         self._crop_jobs[key] = job
         self._crop_pool.start(job)
 
-    def _crop_loaded(self, generation, path, data, error):
+    def _crop_loaded(self, generation, path, data, error, metadata):
         self._crop_jobs.pop((generation, path), None)
-        if self._stopping or generation != self._generation or self.selected_path() != path: return
+        if self._stopping or generation != self._generation: return
+        # None records a completed analysis with no metrics, rather than a
+        # request that is still pending. It also replaces any stale result.
+        self._quality[path] = metadata or None
+        for i in range(self.images.count()):
+            item = self.images.item(i)
+            if item.data(Qt.ItemDataRole.UserRole) == path:
+                if metadata:
+                    count = metadata.get("face_count", 0)
+                    score = metadata.get("face_quality")
+                    badge = f"Face {score:.2f}" if score is not None and count == 1 else f"Faces: {count}"
+                else:
+                    badge = "Quality unavailable"
+                item.setText(f"{Path(path).name}\n{badge}")
+                item.setToolTip(f"{path}\n{badge} (heuristic; identity unverified)")
+                break
+        if self.selected_path() != path: return
+        self._show_quality(path)
         image = QImage.fromData(data) if data else QImage()
         if image.isNull():
             self.crop_preview.setText(f"Face crop unavailable: {error or 'invalid image'}")
             return
         self.crop_preview.setPixmap(QPixmap.fromImage(image).scaled(224, 224, Qt.AspectRatioMode.KeepAspectRatio,
                                                                     Qt.TransformationMode.SmoothTransformation))
+
+    def _show_quality(self, path):
+        if path in self._quality and self._quality[path] is None:
+            self.quality_label.setText("Quality unavailable")
+            return
+        quality = self._quality.get(path)
+        if not quality:
+            self.quality_label.setText("Analyzing quality…" if path else "Quality metrics appear after face analysis")
+            return
+        score = quality.get("face_quality")
+        score_text = f"{score:.2f} / 1.00" if score is not None else "not available"
+        face_size = quality.get("face_width_fraction")
+        size_text = f"{face_size:.0%}" if face_size is not None else "not available"
+        self.quality_label.setText(f"Faces: {quality['face_count']}  ·  Face width: {size_text}  ·  "
+                                   f"Sharpness: {quality['sharpness']:.1f}  ·  "
+                                   f"Face quality: {score_text} (heuristic; identity unverified)")
 
     def _enqueue(self, path, size, priority=0):
         if self._stopping: return

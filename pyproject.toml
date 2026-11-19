@@ -1,6 +1,6 @@
 [project]
 name = "hdw-person-lens"
-version = "0.5.0"
+version = "0.6.1"
 description = "A local desktop app for managing persons in photo collections."
 requires-python = ">=3.13"
 readme = "README.md"

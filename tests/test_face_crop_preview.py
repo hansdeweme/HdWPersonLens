@@ -68,14 +68,35 @@ def finish():
         time.sleep(.005)
     app.processEvents()
 try:
-    with patch.object(gallery._crop_runner, "preview", side_effect=[RuntimeError("Unexpected failure"), (output.getvalue(), "")]):
+    quality = {"face_count": 1, "sharpness": 120.0, "face_width_fraction": .4, "face_quality": .75}
+    with patch.object(gallery._crop_runner, "assess", side_effect=[
+        RuntimeError("Unexpected failure"),
+        (output.getvalue(), "", quality),
+        (None, "Detector failed on retry", {}),
+        (None, "No usable face", {"face_count": 0, "sharpness": 80.0, "face_width_fraction": None, "face_quality": None}),
+    ]) as assess:
         gallery.images.setCurrentRow(0)
         finish()
         assert "Unexpected failure" in gallery.crop_preview.text()
+        assert gallery.quality_label.text() == "Quality unavailable"
         assert not gallery._crop_jobs
         gallery.images.setCurrentRow(1)
         finish()
         assert gallery.crop_preview.pixmap().width() == 224
+        assert "0.75 / 1.00" in gallery.quality_label.text()
+        assert "Face 0.75" in gallery.images.item(1).text()
+        # Reselect the successful image after a failure: old metrics must clear.
+        gallery.images.setCurrentRow(-1)
+        gallery.images.setCurrentRow(1)
+        finish()
+        assert "Detector failed on retry" in gallery.crop_preview.text()
+        assert gallery.quality_label.text() == "Quality unavailable"
+        assert "0.75" not in gallery.images.item(1).text()
+        gallery.images.setCurrentRow(0)
+        finish()
+        assert "Faces: 0" in gallery.quality_label.text()
+        assert "Face quality: not available" in gallery.quality_label.text()
+        assert assess.call_count == 4
         assert not gallery._crop_jobs
 finally:
     gallery.shutdown()
