@@ -334,6 +334,7 @@ class PersonsWorkbench(QWidget):
         self._portrait_pool.start(job)
 
     def _portrait_failed(self, name, generation, message):
+        self._portrait_pending.pop((generation, name), None)
         if generation != self._portrait_generation or self._portrait_stopping:
             return
         self._portrait_failures[name] = message
