@@ -102,6 +102,7 @@ class SchemaForm(QWidget):
         self.root_required = set(schema.get("required", []))
         # Store (path, getter, setter) tuples
         self._bindings: List[Tuple[Tuple[str, ...], Callable[[], Any], Callable[[Any], None]]] = []
+        self._field_widgets = {}
         outer = QVBoxLayout(self)
         self.form = QFormLayout()
         self.form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
@@ -128,6 +129,7 @@ class SchemaForm(QWidget):
                 layout.addRow(label + ":", w)
             if getter is not None and setter is not None:
                 self._bindings.append((path + (name,), getter, setter))
+                self._field_widgets[path + (name,)] = w
 
     def _widget_for_subschema(self, name: str, schema: Dict[str, Any], path: Tuple[str, ...], is_required: bool):
         stype = schema.get("type")
@@ -186,6 +188,7 @@ class SchemaForm(QWidget):
 
                     if getter is not None and setter is not None:
                         self._bindings.append((path + (child_name,), getter, setter))
+                        self._field_widgets[path + (child_name,)] = w_child
 
                 h.addStretch(1)
                 # container has no getter/setter; its children are bound
@@ -228,6 +231,7 @@ class SchemaForm(QWidget):
 
                     if getter is not None and setter is not None:
                         self._bindings.append((path + (child_name,), getter, setter))
+                        self._field_widgets[path + (child_name,)] = w_child
 
                 # container has no getter/setter; its children are bound
                 return grid_wrap, (lambda: None), (lambda v: None)
@@ -343,6 +347,9 @@ class SchemaForm(QWidget):
         # reset by re-populating with empty
         empty: Dict[str, Any] = {}
         self.populate(empty)
+
+    def set_locked_fields(self, names):
+        for path, widget in self._field_widgets.items(): widget.setEnabled(path[0] not in names)
 
 # --------------------------- Main Window ---------------------------
 class PersonDbEditorWidget(QWidget):

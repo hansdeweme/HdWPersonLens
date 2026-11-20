@@ -156,6 +156,7 @@ class MainWindow(QMainWindow):
             self.person_db, self.person_service, self.settings, parent=self
         )
         self.persons_workbench.portrait_error.connect(self.display_message)
+        self.persons_workbench.person_action_requested.connect(self._on_workbench_person_action)
         self.main_tabs.addTab(self.persons_workbench, "Persons Workbench")
         self.setCentralWidget(self.main_tabs)
 
@@ -1349,6 +1350,10 @@ class MainWindow(QMainWindow):
         dialog = AlterPersonDialog(person_service=self.person_service, parent=self,)
         if name:
             dialog.select_person(name)
+            if dialog.person_combo.currentText() != name:
+                QMessageBox.warning(self, "Rename Person", f"The selected person '{name}' is no longer available. Refresh the workbench and try again.")
+                dialog.deleteLater()
+                return
         dialog.person_renamed.connect(self._on_person_renamed)
         dialog.exec()
 
@@ -1364,6 +1369,10 @@ class MainWindow(QMainWindow):
         dialog = RemovePersonDialog(person_service=self.person_service, parent=self,)
         if name:
             dialog.select_person(name)
+            if dialog.person_combo.currentText() != name:
+                QMessageBox.warning(self, "Remove Person", f"The selected person '{name}' is no longer available. Refresh the workbench and try again.")
+                dialog.deleteLater()
+                return
         dialog.person_removed.connect(self._on_person_removed)
         dialog.exec()
 
@@ -1384,13 +1393,13 @@ class MainWindow(QMainWindow):
         self.reset_progress_bar()
         self.statusBar().showMessage(f"Recognition profile created for {result.name}", 5000,)
         if hasattr(self, "persons_workbench"):
-            self.persons_workbench.refresh()
+            self.persons_workbench.refresh(select_name=result.name)
 
     def _on_person_renamed(self, old_name: str, new_name: str, ) -> None:
         self.display_message(f"[PersonService] Renamed "f"{old_name} → {new_name}" )
         self.person_db_editor.refresh_from_database(force=True) 
         if hasattr(self, "persons_workbench"):
-            self.persons_workbench.refresh()
+            self.persons_workbench.refresh(select_name=new_name)
 
     def _on_person_removed(self, person_name: str, ) -> None:
         self.display_message(f"[PersonService] Removed person: " f"{person_name}")
@@ -1402,6 +1411,25 @@ class MainWindow(QMainWindow):
         dialog = EditPersonImagesDialog(self.person_service, parent=self)
         dialog.person_images_updated.connect(self._on_person_images_updated)
         dialog.exec()
+
+    def _on_workbench_person_action(self, action: str, name: str) -> None:
+        """Use existing management dialogs and worker APIs with workbench selection context."""
+        if action == "add": self._show_add_person_dialog()
+        elif action == "rename": self._show_rename_person_dialog(name)
+        elif action == "remove": self._show_remove_person_dialog(name)
+        elif action == "images":
+            dialog = EditPersonImagesDialog(self.person_service, parent=self)
+            if not dialog.select_person(name):
+                QMessageBox.warning(self, "Edit Images", f"No recognition profile found for '{name}'.")
+                return
+            dialog.person_images_updated.connect(self._on_person_images_updated)
+            dialog.exec()
+        elif action == "reencode":
+            state = self.person_service.get_person_state(name)
+            if not state.has_recognition_state or not state.image_count:
+                QMessageBox.warning(self, "Re-encode", f"No usable KB images found for '{name}'.")
+                return
+            self._start_reencode_worker(names=[name])
 
     def _on_person_images_updated(self, name: str, added: int, removed: int) -> None:
         self.display_message(f"[PersonService] Updated images for {name}: +{added}, -{removed}." )
@@ -1470,6 +1498,7 @@ class MainWindow(QMainWindow):
         succeeded = len(result.completed)
         failed = len(result.failures)
         self.display_message("[PersonService] Re-encoding finished: "f"{succeeded} succeeded, {failed} failed.")
+        if hasattr(self, "persons_workbench") and succeeded: self.persons_workbench.refresh()
         if result.failures:
             details = "\n".join(f"• {name}: {message}" for name, message in result.failures)
             QMessageBox.warning(self,"Re-Encoding Completed with Issues", f"Succeeded: {succeeded}\n" f"Failed: {failed}\n\n" f"{details}",)

@@ -7,6 +7,8 @@
 #
 from __future__ import annotations
 import unicodedata
+from contextlib import contextmanager
+from threading import RLock
 import os, json, re, pathlib
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Literal
 
@@ -98,6 +100,8 @@ class PersonDB:
         self._rows: List[JSON] = []
         self._by_id: Dict[str, JSON] = {}
         self._by_name: Dict[str, JSON] = {}
+        self._write_mutex = RLock()
+        self._write_depth = 0
         self.reload()
 
     # ----- load / reload -----
@@ -130,6 +134,37 @@ class PersonDB:
             self.reload(force=True)
 
     # ----- internal helpers -----
+    @contextmanager
+    def _write_lock(self):
+        # Keep the lock on a stable sidecar across atomic database replacements.
+        with self._write_mutex:
+            if self._write_depth:
+                yield
+                return
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            with self.path.with_suffix(self.path.suffix + ".lock").open("a+b") as lock:
+                if os.name == "nt":
+                    import msvcrt
+                    lock.seek(0, os.SEEK_END)
+                    if lock.tell() == 0:
+                        lock.write(b"\0")
+                        lock.flush()
+                    lock.seek(0)
+                    msvcrt.locking(lock.fileno(), msvcrt.LK_NBLCK, 1)
+                else:
+                    import fcntl
+                    fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                self._write_depth = 1
+                try:
+                    yield
+                finally:
+                    self._write_depth = 0
+                    if os.name == "nt":
+                        lock.seek(0)
+                        msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)
+                    else:
+                        fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+
     def _serialize_rows(self) -> str:
         rows = sorted(
             self._rows,
@@ -190,8 +225,9 @@ class PersonDB:
 
     def save(self) -> None:
         """Persist current in-memory rows to disk and refresh indices."""
-        self._reindex()
-        self._atomic_write()
+        with self._write_lock():
+            self._reindex()
+            self._atomic_write()
        
     def get_by_name(self, name: str,) -> JSON | None:
         self.reload_if_changed()
@@ -234,19 +270,20 @@ class PersonDB:
         self,
         name: str,
     ) -> bool:
-        self.reload_if_changed()
-        normalized_name = _norm_name(name)
-        original_count = len(self._rows)
-        self._rows = [
-            row
-            for row in self._rows
-            if _norm_name(row.get(PERSON_NAME_FIELD,"",))
-            != normalized_name
-        ]
-        if len(self._rows) == original_count:
-            return False
-        self.save()
-        return True
+        with self._write_lock():
+            self.reload_if_changed()
+            normalized_name = _norm_name(name)
+            original_count = len(self._rows)
+            self._rows = [
+                row
+                for row in self._rows
+                if _norm_name(row.get(PERSON_NAME_FIELD,"",))
+                != normalized_name
+            ]
+            if len(self._rows) == original_count:
+                return False
+            self.save()
+            return True
 
     def delete(self, name: str) -> None:
         if not self.delete_by_name(name):
@@ -259,20 +296,21 @@ class PersonDB:
         Rename personName; returns True if successful.
         Does nothing if old_name not found or new_name already exists.
         """
-        self.reload_if_changed()
-        old_key = _norm_name(old_name)
-        new_name = str(new_name).strip()
-        new_key = _norm_name(new_name)
-        record = self._by_name.get(old_key)
-        if record is None:
-            return False
-        collision = self._by_name.get(new_key)
-        if collision is not None and collision is not record:
-            return False
-        record[PERSON_NAME_FIELD] = new_name
-        _normalize_record(record)
-        self.save()
-        return True
+        with self._write_lock():
+            self.reload_if_changed()
+            old_key = _norm_name(old_name)
+            new_name = str(new_name).strip()
+            new_key = _norm_name(new_name)
+            record = self._by_name.get(old_key)
+            if record is None:
+                return False
+            collision = self._by_name.get(new_key)
+            if collision is not None and collision is not record:
+                return False
+            record[PERSON_NAME_FIELD] = new_name
+            _normalize_record(record)
+            self.save()
+            return True
 
     def update_fields(self, name: str, **changes) -> bool:
         """
@@ -280,63 +318,65 @@ class PersonDB:
         Example: update_fields("Alice", files_path="D:/Fotos/Alice")
         Returns True if a record was updated.
         """
-        self.reload_if_changed()
-        record = self._by_name.get(_norm_name(name))
-        if record is None:
-            return False
-        for key, value in changes.items():
-            if "." not in key:
-                record[key] = value
-                continue
-            current = record
-            parts = key.split(".")
-            for part in parts[:-1]:
-                if not isinstance(current.get(part), dict):
-                    current[part] = {}
-                current = current[part]
-            current[parts[-1]] = value
-        self.save()
-        return True
+        with self._write_lock():
+            self.reload_if_changed()
+            record = self._by_name.get(_norm_name(name))
+            if record is None:
+                return False
+            for key, value in changes.items():
+                if "." not in key:
+                    record[key] = value
+                    continue
+                current = record
+                parts = key.split(".")
+                for part in parts[:-1]:
+                    if not isinstance(current.get(part), dict):
+                        current[part] = {}
+                    current = current[part]
+                current[parts[-1]] = value
+            self.save()
+            return True
 
     def upsert(self, record: JSON, *, original_name: str | None = None,) -> str:
-        self.reload_if_changed()
-        new_name = str(record.get(PERSON_NAME_FIELD, "",)).strip()
-        if not new_name:
-            raise ValueError(
-                "personName is required."
-            )
-        normalized_new = _norm_name(new_name)
-        existing_new = self._by_name.get(normalized_new)
-        if original_name is None:
-            if existing_new is not None:
+        with self._write_lock():
+            self.reload_if_changed()
+            new_name = str(record.get(PERSON_NAME_FIELD, "",)).strip()
+            if not new_name:
                 raise ValueError(
-                    f"A record named {new_name!r} "
-                    "already exists."
+                    "personName is required."
                 )
-            self._rows.append(record)
-        else:
-            normalized_original = _norm_name(
-                original_name
-            )
-            existing_original = self._by_name.get(
-                normalized_original
-            )
-            if existing_original is None:
-                raise ValueError(
-                    f"Original record "
-                    f"{original_name!r} was not found."
+            normalized_new = _norm_name(new_name)
+            existing_new = self._by_name.get(normalized_new)
+            if original_name is None:
+                if existing_new is not None:
+                    raise ValueError(
+                        f"A record named {new_name!r} "
+                        "already exists."
+                    )
+                self._rows.append(record)
+            else:
+                normalized_original = _norm_name(
+                    original_name
                 )
-            if (normalized_new != normalized_original and existing_new is not None):
-                raise ValueError(
-                    f"Another record named "
-                    f"{new_name!r} already exists."
+                existing_original = self._by_name.get(
+                    normalized_original
                 )
-            index = self._rows.index(
-                existing_original
-            )
-            self._rows[index] = record
-        self.save()
-        return new_name
+                if existing_original is None:
+                    raise ValueError(
+                        f"Original record "
+                        f"{original_name!r} was not found."
+                    )
+                if (normalized_new != normalized_original and existing_new is not None):
+                    raise ValueError(
+                        f"Another record named "
+                        f"{new_name!r} already exists."
+                    )
+                index = self._rows.index(
+                    existing_original
+                )
+                self._rows[index] = record
+            self.save()
+            return new_name
 
     # ----- accessors -----
     def all(self) -> List[JSON]:

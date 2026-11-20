@@ -813,6 +813,13 @@ class EditPersonImagesDialog(QDialog):
     def _current_name(self) -> str:
         return self.person_combo.currentText().strip()
 
+    def select_person(self, name: str) -> bool:
+        """Select an existing recognition profile without creating an invalid combo entry."""
+        index = self.person_combo.findText(name)
+        if index < 0: return False
+        self.person_combo.setCurrentIndex(index)
+        return True
+
     def _load_person(self, name: str) -> None:
         if self.busy:
             return

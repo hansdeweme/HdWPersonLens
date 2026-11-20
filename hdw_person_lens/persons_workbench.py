@@ -17,8 +17,10 @@ This first slice deliberately leaves the existing Persons DB editor and manageme
 dialogs untouched. Portraits and KB gallery are extension points, not yet loaded.
 """
 from __future__ import annotations
+from copy import deepcopy
 from pathlib import Path
-from PyQt6.QtCore import (QAbstractTableModel, QEvent, QModelIndex, QObject, QRunnable, QSize, QSortFilterProxyModel,
+from jsonschema import Draft202012Validator, ValidationError
+from PyQt6.QtCore import (QAbstractTableModel, QEvent, QModelIndex, QObject, QRunnable, QSignalBlocker, QSize, QSortFilterProxyModel,
                           QThreadPool, QTimer, Qt, pyqtSignal)
 from PyQt6.QtGui import QImage, QPixmap
 from PyQt6.QtWidgets import (QApplication, QAbstractItemView, QFormLayout, QHBoxLayout, QLabel, QLineEdit,
@@ -30,6 +32,8 @@ from .person_kb_collection import PersonKBCollectionPanel
 from .person_kb_identity import PersonKBIdentityPanel
 from .person_kb_recommendations import PersonKBRecommendationPanel
 from .person_kb_assessment_workflow import PersonKBAssessmentWorkflow
+from .person_db_gui import SchemaForm, load_schema
+from .person_profile_merge import merge_profile
 
 
 class _PortraitSignals(QObject):
@@ -143,9 +147,10 @@ class PersonRosterFilter(QSortFilterProxyModel):
         return self.needle in value.casefold()
 
 class PersonsWorkbench(QWidget):
-    """Main-window tab with searchable roster and read-only selected-person details."""
+    """Searchable person roster, editable profile, KB assessment and selected-person actions."""
     person_selected = pyqtSignal(str)
     portrait_error = pyqtSignal(str)
+    person_action_requested = pyqtSignal(str, str)
 
     def __init__(self, person_db, person_service, settings=None, parent=None):
         super().__init__(parent)
@@ -162,6 +167,10 @@ class PersonsWorkbench(QWidget):
         self._portrait_pending = {}
         self._portrait_attempted = set()
         self._portrait_full = {}
+        self._profile_editing = False
+        self._profile_original = None
+        self._profile_baseline = None
+        self._profile_name = None
         configured = self.settings.get("query_persons_view", {}).get("columns", [])
         columns = [(str(p), str(label)) for p, label in configured if isinstance(p, str) and isinstance(label, str)] if isinstance(configured, list) else []
         if not columns: columns = [("personName", "Name"), ("birth date", "Birth date"), ("rating", "Rating")]
@@ -181,6 +190,14 @@ class PersonsWorkbench(QWidget):
         refresh.clicked.connect(self.refresh)
         toolbar.addWidget(self.search, 1)
         toolbar.addWidget(refresh)
+        self.person_actions = {}
+        for key, title in (("add", "Add Person"), ("rename", "Rename"), ("remove", "Remove"),
+                           ("images", "Edit Images"), ("reencode", "Re-encode")):
+            button = QPushButton(title)
+            button.clicked.connect(lambda _checked=False, action=key: self._request_person_action(action))
+            toolbar.addWidget(button)
+            self.person_actions[key] = button
+        self._update_person_actions("")
         self.portrait_status = QLabel()
         toolbar.addWidget(self.portrait_status)
         root.addLayout(toolbar)
@@ -216,14 +233,38 @@ class PersonsWorkbench(QWidget):
 
         profile = QWidget()
         profile_layout = QVBoxLayout(profile)
-        self.details_form = QFormLayout()
+        self.profile_summary = QWidget()
+        self.details_form = QFormLayout(self.profile_summary)
         self.fields = {}
         for path, label in columns:
             field = QLabel("—")
             field.setWordWrap(True)
             self.details_form.addRow(label + ":", field)
             self.fields[path] = field
-        profile_layout.addLayout(self.details_form)
+        profile_layout.addWidget(self.profile_summary)
+        self.profile_edit = QPushButton("Edit Profile")
+        self.profile_save = QPushButton("Save")
+        self.profile_cancel = QPushButton("Cancel")
+        self.profile_message = QLabel("")
+        self.profile_editor = None
+        self.profile_schema = None
+        schema_path = self.settings.get("schema_path")
+        if schema_path:
+            try:
+                self.profile_schema = load_schema(schema_path)
+                self.profile_editor = SchemaForm(self.profile_schema, profile)
+                self.profile_editor.set_locked_fields({"personName", "#person_id", "files_path"})
+                profile_layout.addWidget(self.profile_editor)
+            except (OSError, ValueError) as exc:
+                self.profile_message.setText(f"Profile editing unavailable: {exc}")
+        buttons = QHBoxLayout()
+        for button in (self.profile_edit, self.profile_save, self.profile_cancel): buttons.addWidget(button)
+        profile_layout.addLayout(buttons)
+        profile_layout.addWidget(self.profile_message)
+        self.profile_edit.clicked.connect(self._start_profile_edit)
+        self.profile_save.clicked.connect(self._save_profile)
+        self.profile_cancel.clicked.connect(self._cancel_profile_edit)
+        self._set_profile_editing(False)
         self.kb_status = QLabel("KB status: —")
         profile_layout.addWidget(self.kb_status)
         profile_layout.addStretch()
@@ -369,8 +410,9 @@ class PersonsWorkbench(QWidget):
         if self._current_person_name() == name:
             self.portrait.setPixmap(pixmap.scaled(224, 224, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
 
-    def refresh(self):
-        selected_name = self._current_person_name()
+    def refresh(self, select_name=None):
+        if not self._confirm_leave_profile(): return
+        selected_name = select_name or self._current_person_name()
         self._portrait_generation += 1
         for key, job in list(self._portrait_pending.items()):
             if self._portrait_pool.tryTake(job): self._portrait_pending.pop(key, None)
@@ -383,7 +425,9 @@ class PersonsWorkbench(QWidget):
             for row, record in enumerate(self.model.records):
                 if record.get("personName") == selected_name:
                     source_index = self.model.index(row, 1)
-                    self.table.selectRow(self.proxy.mapFromSource(source_index).row())
+                    target = self.proxy.mapFromSource(source_index)
+                    if not target.isValid(): break
+                    self.table.selectRow(target.row())
                     self._schedule_visible_portraits()
                     return
         self._clear_details()
@@ -420,12 +464,99 @@ class PersonsWorkbench(QWidget):
             return
         self.refresh()
 
+    def _set_profile_editing(self, editing):
+        self._profile_editing = editing
+        if not editing: self._profile_original = None
+        if not editing: self._profile_baseline = None
+        self.profile_edit.setVisible(not editing)
+        self.profile_edit.setEnabled(not editing and self.profile_editor is not None)
+        self.profile_save.setVisible(editing)
+        self.profile_cancel.setVisible(editing)
+        if self.profile_editor is not None: self.profile_editor.setVisible(editing)
+        self.profile_summary.setVisible(not editing)
+
+    def _start_profile_edit(self):
+        name = self._current_person_name()
+        if not name or self.profile_editor is None: return
+        record = self.person_db.get_by_name(name)
+        if record is None:
+            QMessageBox.warning(self, "Edit Profile", "The selected record no longer exists.")
+            return
+        self._profile_name = name
+        self._profile_original = deepcopy(record)
+        self.profile_editor.populate(record)
+        self._profile_baseline = self.profile_editor.collect_data()
+        self.profile_message.setText("Name, person ID and image folder are managed through their dedicated actions.")
+        self._set_profile_editing(True)
+
+    def _profile_document(self):
+        paths = (path for path, _getter, _setter in self.profile_editor._bindings)
+        return merge_profile(self._profile_original, self.profile_editor.collect_data(), paths, baseline=self._profile_baseline)
+
+    def _confirm_leave_profile(self):
+        if not self._profile_editing: return True
+        if self._profile_document() != self._profile_original:
+            answer = QMessageBox.question(self, "Unsaved profile changes", "Discard unsaved profile edits?",
+                                          QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
+                                          QMessageBox.StandardButton.Cancel)
+            if answer != QMessageBox.StandardButton.Discard: return False
+        self._cancel_profile_edit()
+        return True
+
+    def _update_person_actions(self, name):
+        state = self.person_service.get_person_state(name) if name else None
+        self.person_actions["add"].setEnabled(True)
+        self.person_actions["rename"].setEnabled(bool(state))
+        self.person_actions["remove"].setEnabled(bool(state))
+        self.person_actions["images"].setEnabled(bool(state and state.has_recognition_state))
+        self.person_actions["reencode"].setEnabled(bool(state and state.has_recognition_state and state.image_count))
+
+    def _request_person_action(self, action):
+        name = self._current_person_name() if action != "add" else ""
+        if action != "add" and not name: return
+        if not self._confirm_leave_profile(): return
+        self.person_action_requested.emit(action, name)
+
+    def _cancel_profile_edit(self):
+        self._set_profile_editing(False)
+        self.profile_message.clear()
+
+    def _save_profile(self):
+        if not self._profile_editing or self._profile_original is None: return
+        name = self._profile_name
+        document = self._profile_document()
+        try:
+            Draft202012Validator(self.profile_schema).validate(document)
+            with self.person_db._write_lock():
+                self.person_db.reload(force=True)
+                current = self.person_db.get_by_name(name)
+                if current is None or current != self._profile_original:
+                    QMessageBox.warning(self, "Profile changed", "The database record changed externally. Cancel and reload before editing.")
+                    return
+                self.person_db.upsert(document, original_name=name)
+        except ValidationError as exc:
+            path = ".".join(map(str, exc.path)) or "<root>"
+            QMessageBox.warning(self, "Invalid Profile", f"Invalid at {path}: {exc.message}")
+            return
+        except (OSError, ValueError, RuntimeError) as exc:
+            QMessageBox.warning(self, "Save Profile", str(exc))
+            return
+        self._cancel_profile_edit()
+        self.refresh()
+        self.profile_message.setText("Profile saved.")
+
     def _on_current_row(self, current, _previous):
+        if not self._confirm_leave_profile():
+            with QSignalBlocker(self.table.selectionModel()):
+                self.table.setCurrentIndex(_previous)
+            return
         name = self.proxy.data(current, PersonRosterModel.NAME_ROLE) if current.isValid() else ""
+        self._update_person_actions(name)
         if not name:
             self._clear_details()
             return
         record = self.person_db.get_by_name(name) or {}
+        self._profile_name = name
         self.name_label.setText(name)
         pixmap = self._portrait_full.get(name)
         if pixmap:
@@ -445,6 +576,9 @@ class PersonsWorkbench(QWidget):
         self.person_selected.emit(name)
 
     def _clear_details(self):
+        self._update_person_actions("")
+        self._set_profile_editing(False)
+        self._profile_name = None
         self.assessment_flow.set_person("", [])
         self.recommendations.set_person("", [])
         self.name_label.setText("Select a person")
