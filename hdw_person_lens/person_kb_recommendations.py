@@ -100,8 +100,8 @@ class PersonKBRecommendationPanel(QWidget):
         layout.addLayout(compare)
         self.results = QTreeWidget()
         self.results.setHeaderLabels(["Image", "Tech score", "Novelty", "Proposal", "Why"])
-        self.results.setMinimumHeight(170)
-        self.results.setMaximumHeight(310)
+        self.results.setMinimumHeight(140)
+        self.results.setMaximumHeight(240)
         layout.addWidget(self.results)
 
     @staticmethod
@@ -113,8 +113,8 @@ class PersonKBRecommendationPanel(QWidget):
         cards.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         cards.setIconSize(QSize(100, 100))
         cards.setGridSize(QSize(132, 145))
-        cards.setMinimumHeight(160)
-        cards.setMaximumHeight(205)
+        cards.setMinimumHeight(145)
+        cards.setMaximumHeight(190)
         return cards
 
     def _update_weight_label(self):

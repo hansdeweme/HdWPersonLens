@@ -62,8 +62,8 @@ class PersonKBIdentityPanel(QWidget):
         layout.addLayout(header)
         self.results = QTreeWidget()
         self.results.setHeaderLabels(["KB image", "Faces", "Peer distance", "Finding"])
-        self.results.setMinimumHeight(170)
-        self.results.setMaximumHeight(270)
+        self.results.setMinimumHeight(130)
+        self.results.setMaximumHeight(190)
         layout.addWidget(self.results)
 
     def set_person(self, _name, paths):

@@ -5,7 +5,7 @@ from pathlib import Path
 
 from PyQt6.QtCore import QObject, QRunnable, QSize, QThreadPool, Qt, pyqtSignal
 from PyQt6.QtGui import QIcon, QImage, QImageReader, QPixmap
-from PyQt6.QtWidgets import (QAbstractItemView, QLabel, QListWidget, QListWidgetItem, QVBoxLayout, QWidget)
+from PyQt6.QtWidgets import (QAbstractItemView, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QVBoxLayout, QWidget)
 
 from .face_crop_preview import FaceCropPreviewRunner
 
@@ -81,23 +81,30 @@ class PersonKBImageGallery(QWidget):
         self.images.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.images.setIconSize(QSize(84, 84))
         self.images.setGridSize(QSize(120, 125))
-        self.images.setMinimumHeight(150)
-        self.images.setMaximumHeight(220)
+        self.images.setMinimumHeight(140)
+        self.images.setMaximumHeight(180)
         self.images.currentItemChanged.connect(self._on_selection)
         layout.addWidget(self.images)
+        previews = QHBoxLayout()
+        previews.setSpacing(12)
+        original_panel = QVBoxLayout()
+        crop_panel = QVBoxLayout()
         self.preview = QLabel("Select a KB image to preview")
         self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.preview.setMinimumHeight(170)
-        self.preview.setMaximumHeight(260)
-        layout.addWidget(QLabel("Original KB image"))
-        layout.addWidget(self.preview)
+        self.preview.setMinimumHeight(190)
+        self.preview.setMaximumHeight(240)
+        original_panel.addWidget(QLabel("Original KB image"))
+        original_panel.addWidget(self.preview)
         self.crop_preview = QLabel("Select a KB image to inspect its face crop")
         self.crop_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.crop_preview.setMinimumHeight(170)
-        self.crop_preview.setMaximumHeight(250)
+        self.crop_preview.setMinimumHeight(190)
+        self.crop_preview.setMaximumHeight(240)
         self.crop_preview.setWordWrap(True)
-        layout.addWidget(QLabel("Face crop (preview only — not saved)"))
-        layout.addWidget(self.crop_preview)
+        crop_panel.addWidget(QLabel("Face crop (preview only — not saved)"))
+        crop_panel.addWidget(self.crop_preview)
+        previews.addLayout(original_panel, 1)
+        previews.addLayout(crop_panel, 1)
+        layout.addLayout(previews)
         self.quality_label = QLabel("Quality metrics appear after face analysis; they do not verify identity")
         self.quality_label.setWordWrap(True)
         layout.addWidget(self.quality_label)
@@ -232,7 +239,7 @@ class PersonKBImageGallery(QWidget):
                     item.setIcon(QIcon(pixmap))
                     break
         elif self.selected_path() == path:
-            self.preview.setPixmap(pixmap.scaled(430, 240, Qt.AspectRatioMode.KeepAspectRatio,
+            self.preview.setPixmap(pixmap.scaled(300, 220, Qt.AspectRatioMode.KeepAspectRatio,
                                                  Qt.TransformationMode.SmoothTransformation))
 
     def _cancel_queued(self):

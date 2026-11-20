@@ -23,8 +23,8 @@ from jsonschema import Draft202012Validator, ValidationError
 from PyQt6.QtCore import (QAbstractTableModel, QEvent, QModelIndex, QObject, QRunnable, QSignalBlocker, QSize, QSortFilterProxyModel,
                           QThreadPool, QTimer, Qt, pyqtSignal)
 from PyQt6.QtGui import QImage, QPixmap
-from PyQt6.QtWidgets import (QApplication, QAbstractItemView, QFormLayout, QHBoxLayout, QLabel, QLineEdit,
-                             QMessageBox, QPushButton, QScrollArea, QSplitter, QTabWidget, QTableView, QVBoxLayout, QWidget)
+from PyQt6.QtWidgets import (QApplication, QAbstractItemView, QFormLayout, QGroupBox, QHeaderView, QHBoxLayout, QLabel, QLineEdit,
+                             QMessageBox, QPushButton, QScrollArea, QSizePolicy, QSplitter, QTabWidget, QTableView, QVBoxLayout, QWidget)
 from .person_portrait_service import PersonPortraitService
 from .portrait_process import PortraitProcessRunner
 from .person_kb_gallery import PersonKBImageGallery
@@ -32,6 +32,7 @@ from .person_kb_collection import PersonKBCollectionPanel
 from .person_kb_identity import PersonKBIdentityPanel
 from .person_kb_recommendations import PersonKBRecommendationPanel
 from .person_kb_assessment_workflow import PersonKBAssessmentWorkflow
+from .personlens_theme import apply_workbench_theme, initial_split_sizes
 from .person_db_gui import SchemaForm, load_schema
 from .person_profile_merge import merge_profile
 
@@ -182,11 +183,15 @@ class PersonsWorkbench(QWidget):
         self.proxy.rowsRemoved.connect(self._schedule_visible_portraits)
         self.proxy.modelReset.connect(self._schedule_visible_portraits)
         root = QVBoxLayout(self)
+        root.setContentsMargins(12, 10, 12, 10)
+        root.setSpacing(10)
         toolbar = QHBoxLayout()
+        toolbar.setSpacing(8)
         self.search = QLineEdit(placeholderText="Search persons…")
         self.search.textChanged.connect(self.proxy.set_search_text)
         self.search.textChanged.connect(self._schedule_visible_portraits)
         refresh = QPushButton("Refresh")
+        refresh.setProperty("themeRole", "secondary")
         refresh.clicked.connect(self.refresh)
         toolbar.addWidget(self.search, 1)
         toolbar.addWidget(refresh)
@@ -194,16 +199,23 @@ class PersonsWorkbench(QWidget):
         for key, title in (("add", "Add Person"), ("rename", "Rename"), ("remove", "Remove"),
                            ("images", "Edit Images"), ("reencode", "Re-encode")):
             button = QPushButton(title)
+            button.setProperty("themeRole", "primary" if key == "add" else "danger" if key == "remove" else "secondary")
             button.clicked.connect(lambda _checked=False, action=key: self._request_person_action(action))
             toolbar.addWidget(button)
             self.person_actions[key] = button
         self._update_person_actions("")
         self.portrait_status = QLabel()
+        self.portrait_status.setObjectName("personStatus")
         toolbar.addWidget(self.portrait_status)
         root.addLayout(toolbar)
 
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.splitter.setChildrenCollapsible(False)
+        self.splitter.installEventFilter(self)
+        self._initial_split_applied = False
         self.table = QTableView()
+        self.table.setMinimumWidth(320)
+        self.table.setAlternatingRowColors(True)
         self.table.setModel(self.proxy)
         self.table.setSortingEnabled(True)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -211,6 +223,12 @@ class PersonsWorkbench(QWidget):
         self.table.verticalHeader().hide()
         self.table.verticalHeader().setDefaultSectionSize(62)
         self.table.setColumnWidth(0, 64)
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        header.setMinimumSectionSize(58)
+        for index, (path, _label) in enumerate(columns, start=1):
+            width = 200 if path == "personName" else 112 if "date" in path.casefold() else 100
+            self.table.setColumnWidth(index, width)
         self.table.setIconSize(QSize(56, 56))
         self.table.selectionModel().currentRowChanged.connect(self._on_current_row)
         self.table.verticalScrollBar().valueChanged.connect(self._schedule_visible_portraits)
@@ -218,16 +236,26 @@ class PersonsWorkbench(QWidget):
         self.splitter.addWidget(self.table)
 
         details = QWidget()
+        details.setObjectName("personDetails")
+        details.setMinimumWidth(380)
+        details.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Expanding)
         detail_layout = QVBoxLayout(details)
         detail_layout.setContentsMargins(6, 6, 6, 6)
+        detail_layout.setSpacing(7)
+        person_header = QHBoxLayout()
+        person_header.setSpacing(12)
         self.name_label = QLabel("Select a person")
-        detail_layout.addWidget(self.name_label)
+        self.name_label.setObjectName("personHeading")
+        self.name_label.setWordWrap(True)
+        person_header.addWidget(self.name_label, 1)
         self.portrait = QLabel("Portrait pending")
+        self.portrait.setObjectName("personPortrait")
         self.portrait.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.portrait.setMinimumHeight(140)
-        self.portrait.setMaximumHeight(224)
-        detail_layout.addWidget(self.portrait)
+        self.portrait.setFixedSize(104, 104)
+        person_header.addWidget(self.portrait)
+        detail_layout.addLayout(person_header)
         self.detail_tabs = QTabWidget()
+        self.detail_tabs.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Expanding)
         self._gallery_pending = None
         detail_layout.addWidget(self.detail_tabs, 1)
 
@@ -244,6 +272,7 @@ class PersonsWorkbench(QWidget):
         profile_layout.addWidget(self.profile_summary)
         self.profile_edit = QPushButton("Edit Profile")
         self.profile_save = QPushButton("Save")
+        self.profile_save.setProperty("themeRole", "primary")
         self.profile_cancel = QPushButton("Cancel")
         self.profile_message = QLabel("")
         self.profile_editor = None
@@ -265,7 +294,7 @@ class PersonsWorkbench(QWidget):
         self.profile_save.clicked.connect(self._save_profile)
         self.profile_cancel.clicked.connect(self._cancel_profile_edit)
         self._set_profile_editing(False)
-        self.kb_status = QLabel("KB status: —")
+        self.kb_status = QLabel("KB: —")
         profile_layout.addWidget(self.kb_status)
         profile_layout.addStretch()
         self.detail_tabs.addTab(self._scroll_section(profile), "Profile")
@@ -275,6 +304,7 @@ class PersonsWorkbench(QWidget):
         self.gallery = PersonKBImageGallery(self)
         portrait_actions = QHBoxLayout()
         choose_portrait = QPushButton("Set Selected as Preferred")
+        choose_portrait.setProperty("themeRole", "primary")
         reset_portrait = QPushButton("Reset to Automatic")
         choose_portrait.clicked.connect(self._choose_preferred_portrait)
         reset_portrait.clicked.connect(self._reset_preferred_portrait)
@@ -288,12 +318,16 @@ class PersonsWorkbench(QWidget):
         assessment = QWidget()
         assessment_layout = QVBoxLayout(assessment)
         self.collection = PersonKBCollectionPanel(self)
-        assessment_layout.addWidget(self.collection)
         self.identity = PersonKBIdentityPanel(self.settings, self)
-        assessment_layout.addWidget(self.identity)
         self.recommendations = PersonKBRecommendationPanel(self.settings, self,
                                                            source_getter=self.person_service.get_person_image_paths)
-        assessment_layout.addWidget(self.recommendations)
+        for title, panel in (("Collection quality", self.collection), ("Identity consistency", self.identity),
+                             ("Reference shortlist", self.recommendations)):
+            group = QGroupBox(title)
+            group_layout = QVBoxLayout(group)
+            group_layout.setContentsMargins(8, 8, 8, 8)
+            group_layout.addWidget(panel)
+            assessment_layout.addWidget(group)
         self.collection.assessment_ready.connect(self.recommendations.set_collection)
         self.identity.assessment_ready.connect(self.recommendations.set_identity)
         self.collection.assessment_invalidated.connect(self.recommendations.invalidate_collection)
@@ -307,8 +341,10 @@ class PersonsWorkbench(QWidget):
         self.detail_tabs.addTab(self._scroll_section(assessment), "KB Assessment")
         self.detail_tabs.currentChanged.connect(self._on_detail_tab_changed)
         self.splitter.addWidget(details)
-        self.splitter.setSizes([620, 380])
+        self.splitter.setStretchFactor(0, 45)
+        self.splitter.setStretchFactor(1, 55)
         root.addWidget(self.splitter, 1)
+        apply_workbench_theme(self)
         self.table.sortByColumn(1, Qt.SortOrder.AscendingOrder)
         QTimer.singleShot(0, self._load_visible_portraits)
 
@@ -343,11 +379,19 @@ class PersonsWorkbench(QWidget):
 
     def showEvent(self, event):
         super().showEvent(event)
+        if not self._initial_split_applied: QTimer.singleShot(0, self._apply_initial_split)
         QTimer.singleShot(0, self._load_pending_gallery)
         self._schedule_visible_portraits()
         self._request_portrait(self._current_person_name())
 
+    def _apply_initial_split(self):
+        if self._initial_split_applied or not self.isVisible() or self.splitter.width() < 700: return
+        self._initial_split_applied = True
+        self.splitter.setSizes(initial_split_sizes(self.splitter.width()))
+
     def eventFilter(self, watched, event):
+        if watched is self.splitter and event.type() == QEvent.Type.Resize and not self._initial_split_applied:
+            QTimer.singleShot(0, self._apply_initial_split)
         if watched is self.table.viewport() and event.type() in (QEvent.Type.Resize, QEvent.Type.Show):
             self._schedule_visible_portraits()
         return super().eventFilter(watched, event)
@@ -408,7 +452,7 @@ class PersonsWorkbench(QWidget):
         self._portrait_full[name] = pixmap
         self.model.set_portrait(name, pixmap.scaled(56, 56, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
         if self._current_person_name() == name:
-            self.portrait.setPixmap(pixmap.scaled(224, 224, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+            self.portrait.setPixmap(pixmap.scaled(100, 100, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
 
     def refresh(self, select_name=None):
         if not self._confirm_leave_profile(): return
@@ -560,7 +604,7 @@ class PersonsWorkbench(QWidget):
         self.name_label.setText(name)
         pixmap = self._portrait_full.get(name)
         if pixmap:
-            self.portrait.setPixmap(pixmap.scaled(224, 224, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+            self.portrait.setPixmap(pixmap.scaled(100, 100, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
         else:
             self.portrait.clear()
             self.portrait.setText("Portrait unavailable" if name in self._portrait_failures else "Portrait pending")
@@ -572,7 +616,7 @@ class PersonsWorkbench(QWidget):
         self._set_gallery_person(name, kb_paths, self.portrait_service.preferred_image(name))
         self.collection.set_person(name, kb_paths)
         self.identity.set_person(name, kb_paths)
-        self.kb_status.setText("KB status available in a later slice")
+        self.kb_status.setText(f"KB: {len(kb_paths)} image(s) · Assessment results in KB Assessment")
         self.person_selected.emit(name)
 
     def _clear_details(self):

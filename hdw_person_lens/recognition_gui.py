@@ -159,6 +159,8 @@ class MainWindow(QMainWindow):
         self.persons_workbench.person_action_requested.connect(self._on_workbench_person_action)
         self.main_tabs.addTab(self.persons_workbench, "Persons Workbench")
         self.setCentralWidget(self.main_tabs)
+        from .personlens_theme import apply_main_navigation_theme
+        apply_main_navigation_theme(self, self.main_tabs)
 
     def _on_person_record_saved(self, person_name: str, ) -> None:
         self.display_message(f"[Persons DB] Saved record: " f"{person_name}")
