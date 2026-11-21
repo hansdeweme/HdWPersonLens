@@ -232,14 +232,12 @@ class MainWindow(QMainWindow):
                     status="Clears old vectors and re-encodes all images for that person",   key="act_reencode_person")
         act(m, "Edit Person Images…", self.edit_person_images, shortcut="Ctrl+E", tip="Add/remove images for a person",
                     status="Opens an editor for a person's images and triggers re-encoding if needed", key="act_edit_person_images")
-        act(m, "Persons Database…", self.show_person_database, shortcut="Ctrl+Shift+P", tip="Open the person database editor", 
-                    status=(f"Create and edit metadata records in {PERSON_SCHEMA_FILENAME}"), key="act_person_database")
         # ---------------- Query Persons ----------------
         m = mb.addMenu("Query Persons")
         act(m, "Find Lookalikes…", self.find_lookalikes, shortcut="Ctrl+L",    tip="Find visually similar persons",
                     status="Compares encodings and shows top lookalike candidates",        key="act_find_lookalikes")
-        act(m, "Browse Persons DB…", self.query_persons, shortcut="Ctrl+B",     tip="Browse the persons database",
-                    status="Open the persons database browser, note: this takes time to load!", key="act_browse_persons_db")
+        act(m, "Browse Persons DB (Legacy)…", self.query_persons, shortcut="Ctrl+Alt+B", tip="Open the original standalone persons browser",
+                    status="Legacy browser; use Persons Workbench for integrated searching and portraits", key="act_browse_persons_db")
         act(m, "", None, sep=True)
         act(m, "Cross Compare Faces…", self.show_person_similarity, shortcut="Ctrl+Shift+F", tip="Cross compare face encodings",
                     status="Computes similarity matrix for face encodings across persons", key="act_cross_faces")
@@ -291,6 +289,13 @@ class MainWindow(QMainWindow):
                     status="Recursively scans folders and copies matches to the results folder", key="act_search_recursive")
         # View
         m = mb.addMenu("View") 
+        act(m, "Persons Workbench…", self.show_persons_workbench, shortcut="Ctrl+B", tip="Open the integrated persons roster and details",
+                    status="Search, inspect, and manage persons in one workspace", key="act_persons_workbench")
+        act(m, "Activity…", self.show_activity, shortcut="Ctrl+1", tip="Show operation logs and progress",
+                    status="Open the Activity log", key="act_activity")
+        act(m, "Persons DB Editor…", self.show_person_database, shortcut="Ctrl+Shift+P", tip="Open the schema-driven metadata editor",
+                    status=f"Create and edit metadata records in {PERSON_SCHEMA_FILENAME}", key="act_person_database")
+        act(m, "", None, sep=True)
         act(m, "Clear Log...",   self.clear_log,  shortcut="Ctrl+Shift+L",      tip="Clear the log output", 
                     status="Clears the log window", key="act_clear_log")        
         # ---------------- Help ----------------
@@ -334,6 +339,14 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Persons Database", str(exc),)
             return
         self.main_tabs.setCurrentWidget(self.person_db_editor)
+
+    def show_persons_workbench(self) -> None:
+        """Navigate to the integrated roster without restarting any KB analyses."""
+        self.main_tabs.setCurrentWidget(self.persons_workbench)
+
+    def show_activity(self) -> None:
+        """Expose existing operation progress and logs without clearing them."""
+        self.main_tabs.setCurrentWidget(self.activity_tab)
 
     def search_for_person_in_folder(self):      
         face_names = self.knowledge_manager.persons.get("face_names", [])
