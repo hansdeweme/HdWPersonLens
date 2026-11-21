@@ -78,6 +78,7 @@ class MainWindow(QMainWindow):
         self.progress_value = 0
         from .personlens_operation_state import PersonOperationState
         self._person_operations = PersonOperationState()
+        self._tracked_activity_workers = {}
         self._reencode_operation = None
         self._reencode_reported = False
         self._reencode_thread: QThread | None = None
@@ -118,10 +119,11 @@ class MainWindow(QMainWindow):
         if self._person_operations.busy: return  # Generic workers cannot overwrite owned person-operation progress.
         self.progress_value = progress  # Store progress safely
 
-    def begin_person_operation(self, label: str) -> int:
+    def begin_person_operation(self, label: str, *, announce: bool = True) -> int:
         token = self._person_operations.begin(label)
         self.progress_value = self._person_operations.current_progress
-        self.display_message(f"[Person Operations] Starting: {label}")
+        self._update_activity_operation_label()
+        if announce: self.display_message(f"[Activity] Starting: {label}")
         return token
 
     def progress_person_operation(self, token: int, value: int) -> None:
@@ -130,8 +132,28 @@ class MainWindow(QMainWindow):
 
     def finish_person_operation(self, token: int | None, error: str = "") -> None:
         if token is None or not self._person_operations.finish(token): return
-        if error: self.display_message(f"[Person Operations][ERROR] {error}")
+        if error: self.display_message(f"[Activity][ERROR] {error}")
         self.progress_value = self._person_operations.current_progress
+        self._update_activity_operation_label()
+
+    def _update_activity_operation_label(self) -> None:
+        label = getattr(self, "activity_operation_label", None)
+        if label is None: return
+        count = self._person_operations.active_count
+        current = self._person_operations.current_label
+        label.setText(f"{current} ({count} active)" if count > 1 else current or "No active operation")
+
+    def _track_activity_worker(self, worker, key: str, label: str) -> None:
+        """Observe QThread progress and completion without changing its existing cleanup connections."""
+        token = self.begin_person_operation(label, announce=False)
+        self._tracked_activity_workers[key] = token
+        worker.progress.connect(lambda value, owner=token: self.progress_person_operation(owner, value))
+        worker.finished.connect(lambda owner=token, name=key: self._finish_tracked_activity_worker(name, owner))
+
+    def _finish_tracked_activity_worker(self, key: str, token: int) -> None:
+        if self._tracked_activity_workers.get(key) == token:
+            del self._tracked_activity_workers[key]
+        self.finish_person_operation(token)
 
     def update_progress_bar_from_timer(self):
         if self.progress_bar is not None:  # Check if progress bar exists
@@ -162,8 +184,14 @@ class MainWindow(QMainWindow):
         self._activity_highlighter = ActivitySeverityHighlighter(self.text_output.document())
         self.progress_bar = (QtWidgets.QProgressBar())
         self.progress_bar.setValue(0)
+        self.activity_operation_label = QtWidgets.QLabel("No active operation")
+        self.activity_operation_label.setMinimumWidth(170)
+        self.activity_operation_label.setStyleSheet("color: #a0aec0; padding: 0 6px;")
+        progress_row = QtWidgets.QHBoxLayout()
+        progress_row.addWidget(self.activity_operation_label)
+        progress_row.addWidget(self.progress_bar, 1)
         activity_layout.addWidget(self.text_output, 1,)
-        activity_layout.addWidget(self.progress_bar,)
+        activity_layout.addLayout(progress_row)
         from .personlens_theme import apply_activity_theme
         apply_activity_theme(self.activity_tab, self.text_output)
         self.main_tabs.addTab(self.activity_tab, "Activity",)
@@ -803,11 +831,11 @@ class MainWindow(QMainWindow):
         self.reset_progress_bar()
         self.display_message("[KB Compatibility] Starting report-only compatibility check...")
         self._kb_compat_worker = KBCompatibilityWorker(settings=self.settings, manager=None, person_db=self.person_db, check_runtime_body_pipeline=False, parent=self)
-        self._kb_compat_worker.progress.connect(self.store_progress_value)
         self._kb_compat_worker.log_message.connect(self.display_message)
         self._kb_compat_worker.result_ready.connect(self._on_kb_compatibility_result)
         self._kb_compat_worker.failed.connect(self._on_kb_compatibility_failed)
         self._kb_compat_worker.finished.connect(self._on_kb_compatibility_finished)
+        self._track_activity_worker(self._kb_compat_worker, "kb_compat", "KB Compatibility")
         self._kb_compat_worker.start()
 
     def _on_kb_compatibility_finished(self):
@@ -884,11 +912,11 @@ class MainWindow(QMainWindow):
         self.display_message(f"[Legacy KB Upgrade] Destination: {destination}")
         self._legacy_kb_upgrade_worker = LegacyKBUpgradeWorker(source_root=source, destination_root=destination, settings=self.settings,
                                                             copy_legacy_encodings=True, copy_persons_json=True, parent=self)
-        self._legacy_kb_upgrade_worker.progress.connect(self.store_progress_value)
         self._legacy_kb_upgrade_worker.log_message.connect(self.display_message)
         self._legacy_kb_upgrade_worker.result_ready.connect(self._on_legacy_kb_upgrade_result)
         self._legacy_kb_upgrade_worker.failed.connect(self._on_legacy_kb_upgrade_failed)
         self._legacy_kb_upgrade_worker.finished.connect(self._on_legacy_kb_upgrade_finished)
+        self._track_activity_worker(self._legacy_kb_upgrade_worker, "legacy_upgrade", "Legacy KB Upgrade")
         self._legacy_kb_upgrade_worker.start()
                         
     def _on_legacy_kb_upgrade_result(self, result: dict):
@@ -984,13 +1012,13 @@ class MainWindow(QMainWindow):
             max_queries_per_person=max_queries,
             parent=self,
         )
-        self._threshold_worker.progress.connect(self.store_progress_value)
         self._threshold_worker.log_message.connect(self.display_message)
         self._threshold_worker.result_ready.connect(
             self._on_threshold_analysis_ready
         )
         self._threshold_worker.failed.connect(self._on_threshold_analysis_failed)
         self._threshold_worker.finished.connect(self._on_threshold_analysis_finished)
+        self._track_activity_worker(self._threshold_worker, "thresholds", "Threshold Analysis")
         self._threshold_worker.start()
 
     def calibrate(self) -> None:

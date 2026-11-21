@@ -29,3 +29,11 @@ class PersonOperationState:
     @property
     def busy(self) -> bool:
         return bool(self._active)
+
+    @property
+    def current_label(self) -> str:
+        return self._active[next(reversed(self._active))][0] if self._active else ""
+
+    @property
+    def active_count(self) -> int:
+        return len(self._active)
