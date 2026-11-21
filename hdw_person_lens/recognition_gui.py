@@ -137,10 +137,14 @@ class MainWindow(QMainWindow):
         activity_layout.setContentsMargins(6, 6, 6, 6,)
         self.text_output = QPlainTextEdit()
         self.text_output.setReadOnly(True)
+        from .personlens_activity import ActivitySeverityHighlighter
+        self._activity_highlighter = ActivitySeverityHighlighter(self.text_output.document())
         self.progress_bar = (QtWidgets.QProgressBar())
         self.progress_bar.setValue(0)
         activity_layout.addWidget(self.text_output, 1,)
         activity_layout.addWidget(self.progress_bar,)
+        from .personlens_theme import apply_activity_theme
+        apply_activity_theme(self.activity_tab, self.text_output)
         self.main_tabs.addTab(self.activity_tab, "Activity",)
         # ---------- Persons DB tab ----------
         self.person_db_editor = (PersonDbEditorWidget(schema_path=self.schema_path, person_db=self.person_db, person_service=self.person_service, parent=self,))

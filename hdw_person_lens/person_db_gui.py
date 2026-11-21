@@ -29,6 +29,7 @@ from   PyQt6.QtGui     import QRegularExpressionValidator
 # local imports
 from .person_db         import PersonDB
 from .person_service    import PersonService
+from .personlens_theme import apply_person_db_theme
 from .config import load_settings as load_app_settings, PERSONS_DB_FILENAME, PERSON_SCHEMA_FILENAME
 
 def load_person_db_settings() -> dict:
@@ -371,6 +372,7 @@ class PersonDbEditorWidget(QWidget):
         self.person_db = person_db
         self.current_key: str | None = None
         self.create_UI()
+        apply_person_db_theme(self)
         # These must run only after every referenced widget exists.
         self.refresh_list()
         self.on_new()
@@ -416,6 +418,8 @@ class PersonDbEditorWidget(QWidget):
         self.btn_delete = QPushButton("Delete DB Record Only", self.right_panel,)
         self.btn_reload = QPushButton("Reload File", self.right_panel,)
         self.btn_export = QPushButton("Save File", self.right_panel,)
+        self.btn_save.setProperty("themeRole", "primary")
+        self.btn_delete.setProperty("themeRole", "danger")
         self.btn_new.clicked.connect(self.on_new)
         self.btn_validate.clicked.connect(self.on_validate)
         self.btn_save.clicked.connect(self.on_save)
@@ -459,12 +463,12 @@ class PersonDbEditorWidget(QWidget):
     # -------------------- Helpers --------------------
     def _ok(self, msg: str):
         self.status.setText(msg)
-        self.status.setStyleSheet("color: #157347;")
+        self.status.setStyleSheet("color: #68d391;")
         QMessageBox.information(self, "Info", msg)
 
     def _err(self, msg: str):
         self.status.setText(msg)
-        self.status.setStyleSheet("color: #b02a37;")
+        self.status.setStyleSheet("color: #fc8181;")
         QMessageBox.critical(self, "Error", msg)
 
     def _selected_key(self) -> Optional[str]:
@@ -494,7 +498,7 @@ class PersonDbEditorWidget(QWidget):
         self.form_widget.populate(rec)
         self.current_key = key
         self.status.setText(f"Loaded: {key}")
-        self.status.setStyleSheet("color: #0d6efd;")
+        self.status.setStyleSheet("color: #90cdf4;")
 
     def _guard_name_change(self, old_name: str, new_name: str) -> bool:
         if not old_name or old_name == new_name or self.person_service is None:
@@ -575,7 +579,7 @@ class PersonDbEditorWidget(QWidget):
         document.update(initial_values)
         self.form_widget.populate(document)
         self.status.setText("New metadata record prepared; review and save.")
-        self.status.setStyleSheet("color: #0d6efd;")
+        self.status.setStyleSheet("color: #90cdf4;")
 
     # -------------------- Slots --------------------
     def on_select(self):
@@ -589,7 +593,7 @@ class PersonDbEditorWidget(QWidget):
         self.current_key = None
         self.form_widget.populate({"#person_id": create_person_id()})
         self.status.setText("New record…")
-        self.status.setStyleSheet("color: #0d6efd;")
+        self.status.setStyleSheet("color: #90cdf4;")
 
     def on_duplicate(self):
         # Grab current data, clear personName to force new
@@ -599,7 +603,7 @@ class PersonDbEditorWidget(QWidget):
         self.on_new()
         self.form_widget.populate(doc)
         self.status.setText("Duplicated (please enter a new personName).")
-        self.status.setStyleSheet("color: #0d6efd;")
+        self.status.setStyleSheet("color: #90cdf4;")
 
     def on_validate(self):
         doc = self.form_widget.collect_data()

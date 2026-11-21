@@ -175,3 +175,43 @@ def apply_main_navigation_theme(main_window, main_tabs):
     main_tabs.setStyleSheet("QTabWidget#mainTabs { background: #12161f; } "
                             "QTabWidget#mainTabs::pane { border: 1px solid #384658; background: #12161f; }")
     main_tabs.tabBar().setStyleSheet(MAIN_NAVIGATION_STYLE)
+
+
+ACTIVITY_STYLE = """
+QWidget#activityTab { background: #12161f; color: #e2e8f0; }
+QWidget#activityTab QPlainTextEdit#activityConsole {
+    background: #0d1117; color: #d7e2ef; border: 1px solid #384658;
+    border-radius: 7px; padding: 10px; selection-background-color: #2b6cb0;
+    font-family: "Consolas", "Cascadia Mono", monospace; font-size: 10pt;
+}
+QWidget#activityTab QProgressBar {
+    background: #1a202c; border: 1px solid #384658; border-radius: 5px;
+    color: #edf2f7; text-align: center; min-height: 16px;
+}
+QWidget#activityTab QProgressBar::chunk { background: #3182ce; border-radius: 4px; }
+"""
+
+
+def classify_activity_line(line: str) -> str:
+    """Presentation-only severity; the original log message stays unchanged."""
+    import re
+    # Ignore zero error counts while retaining any other severity in the message.
+    line, zero_counts = re.subn(
+        r"\b(?:failed|failures?|errors?)\s*[:=]\s*0\b(?!\.\d)"
+        r"|\b0\s+(?:failed|failures?|errors?)\b", "", line, flags=re.I)
+    if re.search(r"\b(errors?|failed|failures?|exception|traceback|critical)\b", line, re.I): return "error"
+    if re.search(r"\b(warning|warn|timeout|retry|issues)\b", line, re.I): return "warning"
+    if zero_counts or re.search(r"\b(success|succeeded|completed|ready)\b", line, re.I): return "success"
+    return "normal"
+
+
+def apply_activity_theme(activity_tab, console):
+    activity_tab.setObjectName("activityTab")
+    console.setObjectName("activityConsole")
+    activity_tab.setStyleSheet(ACTIVITY_STYLE)
+
+
+def apply_person_db_theme(editor):
+    """Reuse workbench widget rules, scoped to Persons DB only."""
+    editor.setObjectName("personsDbEditor")
+    editor.setStyleSheet(WORKBENCH_STYLE.replace("QWidget#personsWorkbench", "QWidget#personsDbEditor"))
