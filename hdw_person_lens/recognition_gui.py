@@ -76,6 +76,10 @@ class MainWindow(QMainWindow):
         self.knowledge_manager = KnowledgeBaseManager(self.settings)
         self.person_service = PersonService(person_db=self.person_db, knowledge_manager=self.knowledge_manager, settings=self.settings, logger=self.display_message)
         self.progress_value = 0
+        from .personlens_operation_state import PersonOperationState
+        self._person_operations = PersonOperationState()
+        self._reencode_operation = None
+        self._reencode_reported = False
         self._reencode_thread: QThread | None = None
         self._reencode_worker: ReencodePersonsWorker | None = None
         self.initUI()
@@ -111,13 +115,30 @@ class MainWindow(QMainWindow):
         super().closeEvent(event)        
     
     def store_progress_value(self, progress):
+        if self._person_operations.busy: return  # Generic workers cannot overwrite owned person-operation progress.
         self.progress_value = progress  # Store progress safely
+
+    def begin_person_operation(self, label: str) -> int:
+        token = self._person_operations.begin(label)
+        self.progress_value = self._person_operations.current_progress
+        self.display_message(f"[Person Operations] Starting: {label}")
+        return token
+
+    def progress_person_operation(self, token: int, value: int) -> None:
+        if self._person_operations.progress(token, value):
+            self.progress_value = self._person_operations.current_progress
+
+    def finish_person_operation(self, token: int | None, error: str = "") -> None:
+        if token is None or not self._person_operations.finish(token): return
+        if error: self.display_message(f"[Person Operations][ERROR] {error}")
+        self.progress_value = self._person_operations.current_progress
 
     def update_progress_bar_from_timer(self):
         if self.progress_bar is not None:  # Check if progress bar exists
             self.progress_bar.setValue(self.progress_value)
 
     def reset_progress_bar(self):
+        if self._person_operations.busy: return
         self.progress_value = 0
         if self.progress_bar is not None:
             self.progress_bar.reset()  # Resets visually and logically
@@ -1482,13 +1503,17 @@ class MainWindow(QMainWindow):
                 self._reencode_thread = None
                 self._reencode_worker = None
         self.reset_progress_bar()
+        label = "Re-encode all persons" if all_persons else f"Re-encode {', '.join(names or [])}"
+        operation = self.begin_person_operation(label)
+        self._reencode_operation = operation
+        self._reencode_reported = False
         thread = QThread(self)
         worker = ReencodePersonsWorker(person_service=self.person_service, names=names, all_persons=all_persons,)
         self._reencode_thread = thread
         self._reencode_worker = worker
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
-        worker.progress.connect(self.store_progress_value)
+        worker.progress.connect(lambda value, token=operation: self.progress_person_operation(token, value))
         worker.log_message.connect(self.display_message)
         worker.person_done.connect(self.on_person_done)
         worker.finished.connect(self._on_reencode_result)
@@ -1497,9 +1522,17 @@ class MainWindow(QMainWindow):
         worker.completed.connect(worker.deleteLater)
         # Clear Python references before scheduling deletion of the QThread.
         thread.finished.connect(lambda: self._clear_reencode_worker(thread, worker,))
-        thread.finished.connect(self.reset_progress_bar)
+        thread.finished.connect(lambda token=operation: self._on_reencode_thread_finished(token))
         thread.finished.connect(thread.deleteLater)
         thread.start()
+
+    def _on_reencode_thread_finished(self, token: int) -> None:
+        if self._reencode_operation == token:
+            self.finish_person_operation(token, "Re-encode ended without reporting a result" if not self._reencode_reported else "")
+            self._reencode_operation = None
+        else:
+            self.finish_person_operation(token)
+        if not self._person_operations.busy: self.reset_progress_bar()
     
     def _clear_reencode_worker(self, thread: QThread, worker: ReencodePersonsWorker,) -> None:
         """Clear references belonging to the completed re-encode operation."""
@@ -1509,6 +1542,7 @@ class MainWindow(QMainWindow):
             self._reencode_worker = None    
         
     def _on_reencode_result(self, result: ReencodeBatchResult,) -> None:
+        self._reencode_reported = True
         if not isinstance(result, ReencodeBatchResult):
             message = ("Re-encoding finished, but the worker returned " f"an invalid result: {type(result).__name__}." )
             self.display_message(f"[PersonService:error] {message}")
@@ -1525,6 +1559,7 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Re-Encoding Completed", f"Successfully re-encoded "f"{succeeded} person(s).", )
 
     def _on_reencode_error(self, message: str) -> None:
+        self._reencode_reported = True
         self.display_message(f"[PersonService:error] {message}")
         QMessageBox.critical(self, "Re-Encoding Failed", message)                                            
                       
@@ -1546,6 +1581,7 @@ class MainWindow(QMainWindow):
         self.status.setText(f"Received {len(paths)} dropped images")
 
     def update_progress_bar(self, progress):
+        if self._person_operations.busy: return
         if self.progress_bar is not None:  # Check if progress bar exists
             self.progress_bar.setValue(progress)
     

@@ -81,6 +81,7 @@ class AddPersonDialog(QDialog):
         self.worker: AddPersonWorker | None = None
         self._worker_result = None
         self._worker_error = ""
+        self._operation_token = None
         self.busy = False
         self.valid_extensions = DEFAULT_RECOGNITION_EXTENSIONS
         self.setWindowTitle("Add Person")
@@ -279,6 +280,8 @@ class AddPersonDialog(QDialog):
         self._worker_error = ""
         self._set_busy(True)
         parent = self.parent()
+        begin = getattr(parent, "begin_person_operation", None)
+        self._operation_token = begin(f"Add Person: {name}") if callable(begin) else None
         reset_progress = getattr(parent, "reset_progress_bar", None)
         if callable(reset_progress):
             reset_progress()
@@ -298,7 +301,11 @@ class AddPersonDialog(QDialog):
         self.thread.start()
 
     def _forward_progress(self, value: int) -> None:
-        handler = getattr(self.parent(), "store_progress_value", None, )
+        handler = getattr(self.parent(), "progress_person_operation", None) if self._operation_token is not None else None
+        if callable(handler):
+            handler(self._operation_token, value)
+            return
+        handler = getattr(self.parent(), "store_progress_value", None)
         if callable(handler):
             handler(value)
 
@@ -319,6 +326,9 @@ class AddPersonDialog(QDialog):
         self.thread = None
         self.worker = None
         self._set_busy(False)
+        finish = getattr(self.parent(), "finish_person_operation", None)
+        if callable(finish): finish(self._operation_token, error or ("Add Person completed without a result" if result is None else ""))
+        self._operation_token = None
 
         if error:
             self.status_label.setText("The recognition profile was not created.")
@@ -764,6 +774,9 @@ class EditPersonImagesDialog(QDialog):
         self.thread: QThread | None = None
         self.worker: EditPersonImagesWorker | None = None
         self.busy = False
+        self._operation_token = None
+        self._operation_error = ""
+        self._operation_completed = False
         self.setWindowTitle("Edit Person Images")
         self.resize(720, 560)
         layout = QVBoxLayout(self)
@@ -923,6 +936,10 @@ class EditPersonImagesDialog(QDialog):
         if reply != QMessageBox.StandardButton.Yes:
             return
         self._set_busy(True)
+        self._operation_error = ""
+        self._operation_completed = False
+        begin = getattr(self.parent(), "begin_person_operation", None)
+        self._operation_token = begin(f"Edit Images: {name}") if callable(begin) else None
         self.thread = QThread(self)
         self.worker = EditPersonImagesWorker(self.person_service, name, list(self.pending_additions.values()), list(self.pending_removals.values()), )
         self.worker.moveToThread(self.thread)
@@ -938,6 +955,10 @@ class EditPersonImagesDialog(QDialog):
         self.thread.start()
 
     def _forward_progress(self, value: int) -> None:
+        handler = getattr(self.parent(), "progress_person_operation", None) if self._operation_token is not None else None
+        if callable(handler):
+            handler(self._operation_token, value)
+            return
         handler = getattr(self.parent(), "store_progress_value", None)
         if callable(handler):
             handler(value)
@@ -949,6 +970,7 @@ class EditPersonImagesDialog(QDialog):
 
     def _on_update_finished(self, result) -> None:
         name = result.name
+        self._operation_completed = True
         self.pending_additions.clear()
         self.pending_removals.clear()
         self.existing_images = self.person_service.get_person_image_paths(name)
@@ -964,10 +986,16 @@ class EditPersonImagesDialog(QDialog):
         )
 
     def _on_update_error(self, message: str) -> None:
+        self._operation_completed = True
+        self._operation_error = message
         self.status_label.setText("Update failed; pending changes were retained.")
         QMessageBox.critical(self, "Image Update Failed", message)
 
     def _on_thread_finished(self) -> None:
+        finish = getattr(self.parent(), "finish_person_operation", None)
+        error = self._operation_error or ("Edit Images completed without a result" if not self._operation_completed else "")
+        if callable(finish): finish(self._operation_token, error)
+        self._operation_token = None
         self.thread = None
         self.worker = None
         self._set_busy(False)
