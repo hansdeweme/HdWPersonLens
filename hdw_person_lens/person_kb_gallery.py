@@ -72,7 +72,9 @@ class PersonKBImageGallery(QWidget):
         self._crop_runner = FaceCropPreviewRunner()
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
         self.heading = QLabel("KB reference images")
+        self.heading.setObjectName("galleryHeading")
         layout.addWidget(self.heading)
         self.images = QListWidget()
         self.images.setViewMode(QListWidget.ViewMode.IconMode)
@@ -81,26 +83,30 @@ class PersonKBImageGallery(QWidget):
         self.images.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.images.setIconSize(QSize(84, 84))
         self.images.setGridSize(QSize(120, 125))
-        self.images.setMinimumHeight(140)
-        self.images.setMaximumHeight(180)
+        self.images.setMinimumHeight(150)
+        self.images.setMaximumHeight(215)
         self.images.currentItemChanged.connect(self._on_selection)
         layout.addWidget(self.images)
         previews = QHBoxLayout()
-        previews.setSpacing(12)
+        previews.setSpacing(10)
         original_panel = QVBoxLayout()
         crop_panel = QVBoxLayout()
         self.preview = QLabel("Select a KB image to preview")
         self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.preview.setMinimumHeight(190)
-        self.preview.setMaximumHeight(240)
-        original_panel.addWidget(QLabel("Original KB image"))
+        self.preview.setMaximumHeight(260)
+        original_heading = QLabel("Original KB image")
+        original_heading.setObjectName("gallerySectionHeading")
+        original_panel.addWidget(original_heading)
         original_panel.addWidget(self.preview)
         self.crop_preview = QLabel("Select a KB image to inspect its face crop")
         self.crop_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.crop_preview.setMinimumHeight(190)
-        self.crop_preview.setMaximumHeight(240)
+        self.crop_preview.setMaximumHeight(260)
         self.crop_preview.setWordWrap(True)
-        crop_panel.addWidget(QLabel("Face crop (preview only — not saved)"))
+        crop_heading = QLabel("Face crop (preview only — not saved)")
+        crop_heading.setObjectName("gallerySectionHeading")
+        crop_panel.addWidget(crop_heading)
         crop_panel.addWidget(self.crop_preview)
         previews.addLayout(original_panel, 1)
         previews.addLayout(crop_panel, 1)
@@ -147,6 +153,15 @@ class PersonKBImageGallery(QWidget):
     def selected_path(self):
         item = self.images.currentItem()
         return item.data(Qt.ItemDataRole.UserRole) if item else None
+
+    def select_path(self, path: str) -> bool:
+        """Select a loaded KB image without changing the source list or preferences."""
+        for index in range(self.images.count()):
+            if self.images.item(index).data(Qt.ItemDataRole.UserRole) == path:
+                self.images.setCurrentRow(index)
+                self.images.scrollToItem(self.images.item(index))
+                return True
+        return False
 
     def _on_selection(self, current, _previous):
         if self._stopping: return

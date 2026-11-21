@@ -19,7 +19,9 @@ class PersonKBAssessmentWorkflow(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         header = QHBoxLayout()
-        header.addWidget(QLabel("KB Assessment · guided, read-only"))
+        heading = QLabel("KB Assessment · guided, read-only")
+        heading.setObjectName("assessmentHeading")
+        header.addWidget(heading)
         self.next_button = QPushButton("Next Step")
         self.next_button.clicked.connect(self._next)
         header.addWidget(self.next_button)
@@ -28,6 +30,7 @@ class PersonKBAssessmentWorkflow(QWidget):
         self.labels = {}
         for step in AssessmentFlowState.STEPS:
             label = QLabel()
+            label.setObjectName("assessmentStep")
             label.setWordWrap(True)
             self.labels[step] = label
             states.addWidget(label, 1)
@@ -106,6 +109,10 @@ class PersonKBAssessmentWorkflow(QWidget):
             suffix = " (analysis still running)" if step in active and state != "running" else ""
             label.setText(f"{self.LABELS[step]}\n{state.title()}{suffix}")
             label.setToolTip(self.flow.messages.get(step, ""))
+            if label.property("assessmentState") != state:
+                label.setProperty("assessmentState", state)
+                label.style().unpolish(label)
+                label.style().polish(label)
         next_step = self.flow.next_step() if self._has_person else None
         self.next_button.setEnabled(next_step is not None)
         if not self._has_person:

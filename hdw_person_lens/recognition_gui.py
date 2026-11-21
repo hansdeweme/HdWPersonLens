@@ -130,10 +130,14 @@ class MainWindow(QMainWindow):
     def progress_person_operation(self, token: int, value: int) -> None:
         if self._person_operations.progress(token, value):
             self.progress_value = self._person_operations.current_progress
+        if self._person_operations.get(token) is not None: self._render_activity_operations()
 
     def finish_person_operation(self, token: int | None, error: str = "") -> None:
+        record = self._person_operations.get(token) if token is not None else None
         if token is None or not self._person_operations.finish(token): return
         if error: self.display_message(f"[Activity][ERROR] {error}")
+        if record is not None:
+            self._activity_last_outcome = (record[0], "Error" if error else "Finished")
         self.progress_value = self._person_operations.current_progress
         self._update_activity_operation_label()
 
@@ -143,14 +147,40 @@ class MainWindow(QMainWindow):
         count = self._person_operations.active_count
         current = self._person_operations.current_label
         label.setText(f"{current} ({count} active)" if count > 1 else current or "No active operation")
+        self._render_activity_operations()
 
-    def _track_activity_worker(self, worker, key: str, label: str, *, progress: bool = True, terminal=None) -> int:
+    def _render_activity_operations(self) -> None:
+        table = getattr(self, "activity_operations_table", None)
+        if table is None: return
+        operations = self._person_operations.active_operations
+        table.setRowCount(len(operations))
+        for row, (_, name, progress) in enumerate(operations):
+            for column, value in enumerate((name, f"{progress}%", "Running")):
+                item = QtWidgets.QTableWidgetItem(value)
+                item.setFlags(item.flags() & ~QtCore.Qt.ItemFlag.ItemIsEditable)
+                if column == 2: item.setForeground(QtGui.QColor("#90cdf4"))
+                table.setItem(row, column, item)
+        table.setVisible(bool(operations))
+        outcome = getattr(self, "activity_outcome_label", None)
+        if outcome is not None:
+            name, status = getattr(self, "_activity_last_outcome", ("", ""))
+            outcome.setText(f"Last operation: {name} — {status}" if name else "No completed operations in this session")
+            if outcome.property("operationError") != (status == "Error"):
+                outcome.setProperty("operationError", status == "Error")
+                outcome.style().unpolish(outcome)
+                outcome.style().polish(outcome)
+
+    def _track_activity_worker(self, worker, key: str, label: str, *, progress: bool = True, terminal=None, result_error=None) -> int:
         """Own a worker's progress until its terminal signal, independently of newer workers."""
         token = self.begin_person_operation(label, announce=False)
         self._tracked_activity_workers[key] = token
         if isinstance(worker, QThread): self._running_activity_threads[token] = worker
         if progress: worker.progress.connect(lambda value, owner=token: self.progress_person_operation(owner, value))
-        (terminal or worker.finished).connect(lambda *args, owner=token, name=key: self._finish_tracked_activity_worker(name, owner))
+        (terminal or worker.finished).connect(lambda *args, owner=token, name=key: self._finish_tracked_activity_worker(
+            name, owner, result_error(*args) if result_error else ""))
+        failed = getattr(worker, "failed", None)
+        if failed is not None:
+            failed.connect(lambda message, owner=token, name=key: self._finish_tracked_activity_worker(name, owner, f"{label}: {message}"))
         if isinstance(worker, QThread):
             # Some workers shadow finished with a result signal. Observe actual
             # thread termination too, after queued result callbacks have run.
@@ -158,9 +188,9 @@ class MainWindow(QMainWindow):
                 lambda: QTimer.singleShot(0, lambda: self._on_activity_thread_exited(key, token, label)))
         return token
 
-    def _finish_tracked_activity_worker(self, key: str, token: int) -> None:
+    def _finish_tracked_activity_worker(self, key: str, token: int, error: str = "") -> None:
         if self._tracked_activity_workers.get(key) == token: del self._tracked_activity_workers[key]
-        self.finish_person_operation(token)
+        self.finish_person_operation(token, error)
 
     def _on_activity_thread_exited(self, key: str, token: int, label: str) -> None:
         self._running_activity_threads.pop(token, None)
@@ -201,6 +231,20 @@ class MainWindow(QMainWindow):
         self.activity_operation_label = QtWidgets.QLabel("No active operation")
         self.activity_operation_label.setMinimumWidth(170)
         self.activity_operation_label.setStyleSheet("color: #a0aec0; padding: 0 6px;")
+        self.activity_outcome_label = QtWidgets.QLabel("No completed operations in this session")
+        self.activity_outcome_label.setObjectName("activityOutcome")
+        self.activity_operations_table = QtWidgets.QTableWidget(0, 3)
+        self.activity_operations_table.setObjectName("activityOperations")
+        self.activity_operations_table.setHorizontalHeaderLabels(["Operation", "Progress", "State"])
+        self.activity_operations_table.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        self.activity_operations_table.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+        self.activity_operations_table.horizontalHeader().setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+        self.activity_operations_table.verticalHeader().hide()
+        self.activity_operations_table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.activity_operations_table.setMaximumHeight(150)
+        self.activity_operations_table.setVisible(False)
+        activity_layout.addWidget(self.activity_operations_table)
+        activity_layout.addWidget(self.activity_outcome_label)
         progress_row = QtWidgets.QHBoxLayout()
         progress_row.addWidget(self.activity_operation_label)
         progress_row.addWidget(self.progress_bar, 1)
@@ -801,7 +845,9 @@ class MainWindow(QMainWindow):
         self._dedup_worker.progress.connect(self.on_dedup_progress)  
         self._dedup_worker.log.connect(self.display_message)                  
         self._dedup_worker.finished.connect(self.on_dedup_done)
-        operation = self._track_activity_worker(self._dedup_worker, "dedup", "Duplicate Images Scan", progress=False)
+        operation = self._track_activity_worker(self._dedup_worker, "dedup", "Duplicate Images Scan", progress=False,
+            result_error=lambda summary: str(summary.get("message") or "Duplicate image scan failed") if summary.get("error")
+            else (f"Duplicate image scan: {summary['failed']} failed" if summary.get("failed") else ""))
         self._dedup_worker.progress.connect(lambda done, total, phase, token=operation: self.progress_person_operation(token, int(100 * done / max(1, total))))
         # (Optional) errors
         self.reset_progress_bar()
@@ -1588,11 +1634,13 @@ class MainWindow(QMainWindow):
         self._reencode_reported = True
         if not isinstance(result, ReencodeBatchResult):
             message = ("Re-encoding finished, but the worker returned " f"an invalid result: {type(result).__name__}." )
+            self.finish_person_operation(self._reencode_operation, message)
             self.display_message(f"[PersonService:error] {message}")
             QMessageBox.warning(self, "Re-Encoding Result Error", message,)
             return
         succeeded = len(result.completed)
         failed = len(result.failures)
+        self.finish_person_operation(self._reencode_operation, f"Re-encode: {failed} failed" if failed else "")
         self.display_message("[PersonService] Re-encoding finished: "f"{succeeded} succeeded, {failed} failed.")
         if hasattr(self, "persons_workbench") and succeeded: self.persons_workbench.refresh()
         if result.failures:
@@ -1603,6 +1651,7 @@ class MainWindow(QMainWindow):
 
     def _on_reencode_error(self, message: str) -> None:
         self._reencode_reported = True
+        self.finish_person_operation(self._reencode_operation, message or "Re-encode failed")
         self.display_message(f"[PersonService:error] {message}")
         QMessageBox.critical(self, "Re-Encoding Failed", message)                                            
                       
@@ -1672,7 +1721,7 @@ class MainWindow(QMainWindow):
             dlg.exec()
 
         w.finished.connect(_done)
-        w.error.connect(lambda *args, token=operation: self._finish_tracked_activity_worker("compare_faces", token))
+        w.error.connect(lambda message, token=operation: self._finish_tracked_activity_worker("compare_faces", token, f"Face Cross-Compare: {message}"))
         w.error.connect(lambda m: QMessageBox.warning(self, "Faces compare unavailable", m))
         w.finished.connect(w.deleteLater)
         self.display_message("[Compare] Starting face cross-compare…")
@@ -1702,7 +1751,7 @@ class MainWindow(QMainWindow):
             dlg.exec()
 
         w.finished.connect(_done)
-        w.error.connect(lambda *args, token=operation: self._finish_tracked_activity_worker("compare_bodies", token))
+        w.error.connect(lambda message, token=operation: self._finish_tracked_activity_worker("compare_bodies", token, f"Body Cross-Compare: {message}"))
         w.error.connect(lambda m: QMessageBox.warning(self, "Bodies compare unavailable", m))
         w.finished.connect(w.deleteLater)
         self.display_message("[Compare] Starting body cross-compare…")
@@ -1731,7 +1780,7 @@ class MainWindow(QMainWindow):
             dlg.exec()
 
         w.finished.connect(_done)
-        w.error.connect(lambda *args, token=operation: self._finish_tracked_activity_worker("compare_fused", token))
+        w.error.connect(lambda message, token=operation: self._finish_tracked_activity_worker("compare_fused", token, f"Fused Cross-Compare: {message}"))
         w.error.connect(lambda m: QMessageBox.warning(self, "Fused compare unavailable", m))
         w.finished.connect(w.deleteLater)
         self.display_message("[Compare] Starting fused (face+body) cross-compare…")

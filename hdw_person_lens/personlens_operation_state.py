@@ -22,6 +22,14 @@ class PersonOperationState:
         del self._active[token]
         return True
 
+    def get(self, token: int) -> tuple[str, int] | None:
+        return self._active.get(token)
+
+    @property
+    def active_operations(self) -> tuple[tuple[int, str, int], ...]:
+        """Oldest first; immutable snapshot for presentation without Qt dependencies."""
+        return tuple((token, label, progress) for token, (label, progress) in self._active.items())
+
     @property
     def current_progress(self) -> int:
         return self._active[next(reversed(self._active))][1] if self._active else 0

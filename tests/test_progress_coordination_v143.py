@@ -64,8 +64,8 @@ class ProgressCoordinationTests(unittest.TestCase):
     def test_cross_compare_success_and_error_release(self):
         for mode in ("faces", "bodies", "fused"):
             with self.subTest(mode=mode):
-                self.assertIn(f'"compare_{mode}", token)', GUI)
-        self.assertEqual(GUI.count("w.error.connect(lambda *args, token=operation:"), 3)
+                self.assertIn(f'"compare_{mode}", token, f"', GUI)
+        self.assertEqual(GUI.count("w.error.connect(lambda message, token=operation:"), 3)
 
     def test_completion_ignores_signal_payload(self):
         self.assertIn("lambda *args, owner=token, name=key:", GUI)

@@ -33,6 +33,34 @@ QWidget#personsWorkbench, QWidget#personsWorkbench QWidget {
 QWidget#personsWorkbench QLabel { background: transparent; }
 QWidget#personsWorkbench QLabel#personHeading { font-size: 14pt; font-weight: 700; color: #edf2f7; }
 QWidget#personsWorkbench QLabel#personStatus { color: #a0aec0; font-size: 9pt; }
+QWidget#personsWorkbench QWidget#profileSummary {
+    background: #171e2a; border: 1px solid #384658; border-radius: 7px;
+}
+QWidget#personsWorkbench QLabel#galleryHeading, QWidget#personsWorkbench QLabel#assessmentHeading {
+    color: #edf2f7; font-size: 11pt; font-weight: 700;
+}
+QWidget#personsWorkbench QLabel#gallerySectionHeading { color: #b7c6d8; font-weight: 600; }
+QWidget#personsWorkbench QLabel#assessmentStep {
+    background: #1a2531; border: 1px solid #384658; border-radius: 6px;
+    color: #b7c6d8; padding: 8px;
+}
+QWidget#personsWorkbench QLabel#assessmentStep[assessmentState="running"] {
+    background: #203d55; border-color: #63b3ed; color: #edf2f7;
+}
+QWidget#personsWorkbench QLabel#assessmentStep[assessmentState="complete"] {
+    border-color: #38b2ac; color: #b2f5ea;
+}
+QWidget#personsWorkbench QLabel#assessmentStep[assessmentState="failed"] {
+    border-color: #b84c59; color: #feb2b2;
+}
+QWidget#personsWorkbench QLabel#assessmentStep[assessmentState="stale"] {
+    border-color: #d69e2e; color: #fbd38d;
+}
+QWidget#personsWorkbench QLabel#assessmentHint {
+    color: #a0aec0; background: #171e2a; border-left: 3px solid #3182ce;
+    padding: 7px 10px;
+}
+QWidget#personsWorkbench QLabel#comparisonHeading { color: #90cdf4; font-weight: 650; }
 QWidget#personsWorkbench QLabel#personPortrait {
     background: #10151e; border: 1px solid #384658; border-radius: 7px;
 }

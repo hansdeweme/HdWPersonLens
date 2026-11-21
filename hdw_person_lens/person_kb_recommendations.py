@@ -4,11 +4,12 @@ from __future__ import annotations
 from pathlib import Path
 
 from PyQt6.QtCore import QObject, QRunnable, QSize, QThreadPool, QTimer, Qt, pyqtSignal
-from PyQt6.QtGui import QIcon, QImage, QImageReader, QPixmap
+from PyQt6.QtGui import QBrush, QColor, QIcon, QImage, QImageReader, QPixmap
 from PyQt6.QtWidgets import (QAbstractItemView, QApplication, QHBoxLayout, QLabel, QListWidget, QListWidgetItem,
                              QPushButton, QSlider, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget)
 
 from .kb_reference_recommendations import build_recommendations, source_snapshot
+from .kb_assessment_presentation import FINDING_COLORS, finding_tone
 
 
 class _ThumbnailSignals(QObject):
@@ -43,6 +44,7 @@ class PersonKBRecommendationPanel(QWidget):
     shortlist_started = pyqtSignal()
     shortlist_failed = pyqtSignal(str)
     sources_stale = pyqtSignal(str)
+    image_requested = pyqtSignal(str)
     def __init__(self, settings=None, parent=None, *, source_getter=None):
         super().__init__(parent)
         self.target_size = max(1, int((settings or {}).get("kb_gallery_target_size", 12)))
@@ -89,10 +91,16 @@ class PersonKBRecommendationPanel(QWidget):
         self._update_weight_label()
         compare = QHBoxLayout()
         quality_col, diversity_col = QVBoxLayout(), QVBoxLayout()
-        quality_col.addWidget(QLabel("Quality-only baseline"))
-        diversity_col.addWidget(QLabel("Diversity-aware shortlist"))
+        quality_heading = QLabel("Quality-only baseline")
+        diversity_heading = QLabel("Diversity-aware shortlist · provisional")
+        quality_heading.setObjectName("comparisonHeading")
+        diversity_heading.setObjectName("comparisonHeading")
+        quality_col.addWidget(quality_heading)
+        diversity_col.addWidget(diversity_heading)
         self.quality_cards = self._make_cards()
         self.diversity_cards = self._make_cards()
+        for cards in (self.quality_cards, self.diversity_cards):
+            cards.itemDoubleClicked.connect(lambda item: self.image_requested.emit(item.data(Qt.ItemDataRole.UserRole)))
         quality_col.addWidget(self.quality_cards)
         diversity_col.addWidget(self.diversity_cards)
         compare.addLayout(quality_col, 1)
@@ -102,6 +110,7 @@ class PersonKBRecommendationPanel(QWidget):
         self.results.setHeaderLabels(["Image", "Tech score", "Novelty", "Proposal", "Why"])
         self.results.setMinimumHeight(140)
         self.results.setMaximumHeight(240)
+        self.results.itemDoubleClicked.connect(lambda item, _column: self.image_requested.emit(item.data(0, Qt.ItemDataRole.UserRole)))
         layout.addWidget(self.results)
 
     @staticmethod
@@ -234,6 +243,8 @@ class PersonKBRecommendationPanel(QWidget):
             item = QTreeWidgetItem([Path(row["path"]).name, f"{row['score']:.3f}", novelty,
                                     row["recommendation"].title(), row["reason"]])
             item.setToolTip(0, row["path"])
+            item.setData(0, Qt.ItemDataRole.UserRole, row["path"])
+            item.setForeground(3, QBrush(QColor(FINDING_COLORS[finding_tone(row["recommendation"])])))
             self.results.addTopLevelItem(item)
         self.shortlist_ready.emit(result)
 

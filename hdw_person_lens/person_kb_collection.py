@@ -4,10 +4,12 @@ from __future__ import annotations
 from pathlib import Path
 
 from PyQt6.QtCore import QObject, QRunnable, QThreadPool, Qt, pyqtSignal
+from PyQt6.QtGui import QBrush, QColor
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget
 
 from .kb_collection_assessment import CollectionAssessmentRunner
 from .kb_reference_recommendations import source_snapshot
+from .kb_assessment_presentation import FINDING_COLORS, finding_tone
 
 
 class _AssessmentSignals(QObject):
@@ -36,6 +38,7 @@ class PersonKBCollectionPanel(QWidget):
     assessment_started = pyqtSignal()
     assessment_failed = pyqtSignal(str)
     assessment_stale = pyqtSignal(str)
+    image_requested = pyqtSignal(str)
     def __init__(self, parent=None):
         super().__init__(parent)
         self._generation = 0
@@ -59,6 +62,7 @@ class PersonKBCollectionPanel(QWidget):
         self.results.setHeaderLabels(["KB image", "Dimensions", "Sharpness", "Finding"])
         self.results.setMinimumHeight(130)
         self.results.setMaximumHeight(190)
+        self.results.itemDoubleClicked.connect(lambda item, _column: self.image_requested.emit(item.data(0, Qt.ItemDataRole.UserRole)))
         layout.addWidget(self.results)
 
     def set_person(self, _name, paths):
@@ -111,10 +115,14 @@ class PersonKBCollectionPanel(QWidget):
             item = QTreeWidgetItem([Path(record["path"]).name, f"{record['width']}×{record['height']}",
                                     f"{record['sharpness']:.1f}", finding])
             item.setToolTip(0, record["path"])
+            item.setData(0, Qt.ItemDataRole.UserRole, record["path"])
+            item.setForeground(3, QBrush(QColor(FINDING_COLORS[finding_tone(finding)])))
             self.results.addTopLevelItem(item)
         for failure in result["errors"]:
             item = QTreeWidgetItem([Path(failure["path"]).name, "—", "—", f"Unreadable: {failure['error']}"])
             item.setToolTip(0, failure["path"])
+            item.setData(0, Qt.ItemDataRole.UserRole, failure["path"])
+            item.setForeground(3, QBrush(QColor(FINDING_COLORS["error"])))
             self.results.addTopLevelItem(item)
 
     def _cancel_queued(self):

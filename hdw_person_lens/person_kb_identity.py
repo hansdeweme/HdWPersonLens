@@ -4,11 +4,13 @@ from __future__ import annotations
 from pathlib import Path
 from threading import Event
 
-from PyQt6.QtCore import QObject, QRunnable, QThreadPool, pyqtSignal
+from PyQt6.QtCore import QObject, QRunnable, QThreadPool, Qt, pyqtSignal
+from PyQt6.QtGui import QBrush, QColor
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget
 
 from .kb_identity_assessment import IdentityAssessmentRunner
 from .kb_reference_recommendations import source_snapshot
+from .kb_assessment_presentation import FINDING_COLORS, finding_tone
 
 
 class _IdentitySignals(QObject):
@@ -39,6 +41,7 @@ class PersonKBIdentityPanel(QWidget):
     assessment_started = pyqtSignal()
     assessment_failed = pyqtSignal(str)
     assessment_stale = pyqtSignal(str)
+    image_requested = pyqtSignal(str)
     def __init__(self, settings=None, parent=None):
         super().__init__(parent)
         self.threshold = float((settings or {}).get("kb_gallery_face_identity_max",
@@ -64,6 +67,7 @@ class PersonKBIdentityPanel(QWidget):
         self.results.setHeaderLabels(["KB image", "Faces", "Peer distance", "Finding"])
         self.results.setMinimumHeight(130)
         self.results.setMaximumHeight(190)
+        self.results.itemDoubleClicked.connect(lambda item, _column: self.image_requested.emit(item.data(0, Qt.ItemDataRole.UserRole)))
         layout.addWidget(self.results)
 
     def set_person(self, _name, paths):
@@ -114,6 +118,8 @@ class PersonKBIdentityPanel(QWidget):
             if record.get("error"): finding = f"Unreadable: {record['error']}"
             item = QTreeWidgetItem([Path(record["path"]).name, str(record.get("face_count") or 0), distance_text, finding])
             item.setToolTip(0, record["path"])
+            item.setData(0, Qt.ItemDataRole.UserRole, record["path"])
+            item.setForeground(3, QBrush(QColor(FINDING_COLORS[finding_tone(finding)])))
             self.results.addTopLevelItem(item)
 
     def _invalidate(self):
