@@ -215,3 +215,27 @@ def apply_person_db_theme(editor):
     """Reuse workbench widget rules, scoped to Persons DB only."""
     editor.setObjectName("personsDbEditor")
     editor.setStyleSheet(WORKBENCH_STYLE.replace("QWidget#personsWorkbench", "QWidget#personsDbEditor"))
+
+
+MANAGEMENT_DIALOG_STYLE = WORKBENCH_STYLE.replace("QWidget#personsWorkbench", "QDialog#personManagementDialog") + """
+QDialog#personManagementDialog { background: #12161f; color: #e2e8f0; }
+QDialog#personManagementDialog QDialogButtonBox { background: transparent; }
+QDialog#personManagementDialog QGraphicsView {
+    background: #0d1117; border: 1px solid #384658; border-radius: 6px;
+}
+QDialog#personManagementDialog QListWidget::item {
+    padding: 5px; border-radius: 4px;
+}
+QDialog#personManagementDialog QComboBox QAbstractItemView {
+    background: #1a202c; color: #e2e8f0; selection-background-color: #254b6a;
+}
+QDialog#personManagementDialog QLabel[themeRole="warning"] { color: #fbd38d; }
+"""
+
+
+def apply_management_dialog_theme(dialog, *, primary=(), danger=()):
+    """Apply a dialog-local theme; no application-wide or parent stylesheet changes."""
+    dialog.setObjectName("personManagementDialog")
+    for button in primary: button.setProperty("themeRole", "primary")
+    for button in danger: button.setProperty("themeRole", "danger")
+    dialog.setStyleSheet(MANAGEMENT_DIALOG_STYLE)

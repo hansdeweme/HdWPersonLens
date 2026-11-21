@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (QDialog, QMessageBox, QComboBox,  QDialogButtonBox,
 from .image_drop_list   import DropWidget
 from .person_service    import PersonConflictError, PersonNotFoundError, PersonServiceError
 from .config            import DEFAULT_RECOGNITION_EXTENSIONS
+from .personlens_theme  import apply_management_dialog_theme
 
 
 class SelectPersonDialog(QDialog):
@@ -33,6 +34,7 @@ class SelectPersonDialog(QDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
         self.setLayout(layout)
+        apply_management_dialog_theme(self, primary=(buttons.button(QDialogButtonBox.StandardButton.Ok),))
 
     def get_selected_name(self):
         return self.combo.currentText()
@@ -130,6 +132,7 @@ class AddPersonDialog(QDialog):
         layout.addWidget(self.button_box)
         self._update_person_info(self.person_combo.currentText())
         self._sync_controls()
+        apply_management_dialog_theme(self, primary=(self.add_button,))
 
     @staticmethod
     def _path_key(path: str) -> str:
@@ -416,6 +419,7 @@ class RemovePersonDialog(QDialog):
         if self.person_combo.count() == 0:
             self.remove_button.setEnabled(False)
             self.files_path_label.setText("No persons available.")
+        apply_management_dialog_theme(self, danger=(self.remove_button,))
 
     def select_person(self, name: str) -> None:
         index = self.person_combo.findText(name)
@@ -581,6 +585,7 @@ class AlterPersonDialog(QDialog):
         layout.addRow("New photo folder:", self.new_path_edit,)
         layout.addRow(button_box)
         self._refresh_paths()
+        apply_management_dialog_theme(self, primary=(self.rename_button,))
 
     def select_person(self, name: str) -> None:
         index = self.person_combo.findText(name)
@@ -802,6 +807,7 @@ class EditPersonImagesDialog(QDialog):
         self._load_person(self.person_combo.currentText())
         if not self.person_combo.count():
             self.status_label.setText("No recognition profiles are available.")
+        apply_management_dialog_theme(self, primary=(self.btn_apply,))
 
     @staticmethod
     def _path_key(path: str) -> str:
@@ -1039,6 +1045,7 @@ class ImagePreviewDialog(QDialog):
             btn_layout.addWidget(btn)
         layout.addLayout(btn_layout)
         self.scale_factor = 1
+        apply_management_dialog_theme(self)
         
     def zoom_in(self):
         self.scale_factor *= 1.25
