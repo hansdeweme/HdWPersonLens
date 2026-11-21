@@ -22,7 +22,7 @@ from pathlib import Path
 from jsonschema import Draft202012Validator, ValidationError
 from PyQt6.QtCore import (QAbstractTableModel, QEvent, QModelIndex, QObject, QRunnable, QSignalBlocker, QSize, QSortFilterProxyModel,
                           QThreadPool, QTimer, Qt, pyqtSignal)
-from PyQt6.QtGui import QImage, QPixmap
+from PyQt6.QtGui import QImage, QKeySequence, QPixmap, QShortcut
 from PyQt6.QtWidgets import (QApplication, QAbstractItemView, QFormLayout, QGroupBox, QHeaderView, QHBoxLayout, QLabel, QLineEdit,
                              QMessageBox, QPushButton, QScrollArea, QSizePolicy, QSplitter, QTabWidget, QTableView, QVBoxLayout, QWidget)
 from .person_portrait_service import PersonPortraitService
@@ -188,10 +188,19 @@ class PersonsWorkbench(QWidget):
         toolbar = QHBoxLayout()
         toolbar.setSpacing(8)
         self.search = QLineEdit(placeholderText="Search persons…")
+        self.search.setAccessibleName("Search persons")
+        self.search.setToolTip("Filter the person roster by name or visible profile fields (Ctrl+F).")
+        self.search_shortcut = QShortcut(QKeySequence("Ctrl+F"), self)
+        self.search_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        self.search_shortcut.activated.connect(self._focus_search)
+        self.clear_search_shortcut = QShortcut(QKeySequence("Escape"), self.search)
+        self.clear_search_shortcut.setContext(Qt.ShortcutContext.WidgetShortcut)
+        self.clear_search_shortcut.activated.connect(self.search.clear)
         self.search.textChanged.connect(self.proxy.set_search_text)
         self.search.textChanged.connect(self._schedule_visible_portraits)
         refresh = QPushButton("Refresh")
         refresh.setProperty("themeRole", "secondary")
+        refresh.setToolTip("Reload person records and refresh the current roster selection.")
         refresh.clicked.connect(self.refresh)
         toolbar.addWidget(self.search, 1)
         toolbar.addWidget(refresh)
@@ -199,10 +208,19 @@ class PersonsWorkbench(QWidget):
         actions_row = QHBoxLayout()
         actions_row.setSpacing(8)
         self.person_actions = {}
+        action_tips = {
+            "add": "Create a recognition profile for a new person.",
+            "rename": "Rename the selected person and associated recognition profile.",
+            "remove": "Remove the selected person after confirmation.",
+            "images": "Manage knowledge-base images for the selected person.",
+            "reencode": "Rebuild recognition encodings for the selected person.",
+        }
         for key, title in (("add", "Add Person"), ("rename", "Rename"), ("remove", "Remove"),
                            ("images", "Edit Images"), ("reencode", "Re-encode")):
             button = QPushButton(title)
             button.setProperty("themeRole", "primary" if key == "add" else "danger" if key == "remove" else "secondary")
+            button.setToolTip(action_tips[key])
+            button.setAccessibleName(title)
             button.clicked.connect(lambda _checked=False, action=key: self._request_person_action(action))
             actions_row.addWidget(button)
             self.person_actions[key] = button
@@ -218,6 +236,8 @@ class PersonsWorkbench(QWidget):
         self.splitter.installEventFilter(self)
         self._initial_split_applied = False
         self.table = QTableView()
+        self.table.setAccessibleName("Persons roster")
+        self.table.setToolTip("Select a person to inspect their profile, KB images, and assessments.")
         self.table.setMinimumWidth(340)
         self.table.setAlternatingRowColors(True)
         self.table.setModel(self.proxy)
@@ -260,6 +280,7 @@ class PersonsWorkbench(QWidget):
         person_header.addWidget(self.portrait)
         detail_layout.addLayout(person_header)
         self.detail_tabs = QTabWidget()
+        self.detail_tabs.setAccessibleName("Person details")
         self.detail_tabs.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Expanding)
         self._gallery_pending = None
         self._assessment_image_pending = None
@@ -359,6 +380,10 @@ class PersonsWorkbench(QWidget):
         apply_workbench_theme(self)
         self.table.sortByColumn(1, Qt.SortOrder.AscendingOrder)
         QTimer.singleShot(0, self._load_visible_portraits)
+
+    def _focus_search(self):
+        self.search.setFocus(Qt.FocusReason.ShortcutFocusReason)
+        self.search.selectAll()
 
     @staticmethod
     def _scroll_section(widget):

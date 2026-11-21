@@ -113,6 +113,9 @@ QWidget#personsWorkbench QTableView::item:hover, QWidget#personsWorkbench QListW
 QWidget#personsWorkbench QTableView::item:selected, QWidget#personsWorkbench QListWidget::item:selected {
     background: #254b6a; color: #ffffff;
 }
+QWidget#personsWorkbench QTableView:focus, QWidget#personsWorkbench QListWidget:focus,
+QWidget#personsWorkbench QTreeView:focus { border: 1px solid #90cdf4; }
+QWidget#personsWorkbench QTabBar::tab:focus { border-color: #90cdf4; }
 QWidget#personsWorkbench QHeaderView::section {
     background: #253244; color: #e2e8f0; border: 0;
     border-right: 1px solid #384658; padding: 8px; font-weight: 650;
