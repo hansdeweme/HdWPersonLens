@@ -79,6 +79,7 @@ class MainWindow(QMainWindow):
         from .personlens_operation_state import PersonOperationState
         self._person_operations = PersonOperationState()
         self._tracked_activity_workers = {}
+        self._running_activity_threads = {}
         self._reencode_operation = None
         self._reencode_reported = False
         self._reencode_thread: QThread | None = None
@@ -143,17 +144,30 @@ class MainWindow(QMainWindow):
         current = self._person_operations.current_label
         label.setText(f"{current} ({count} active)" if count > 1 else current or "No active operation")
 
-    def _track_activity_worker(self, worker, key: str, label: str) -> None:
-        """Observe QThread progress and completion without changing its existing cleanup connections."""
+    def _track_activity_worker(self, worker, key: str, label: str, *, progress: bool = True, terminal=None) -> int:
+        """Own a worker's progress until its terminal signal, independently of newer workers."""
         token = self.begin_person_operation(label, announce=False)
         self._tracked_activity_workers[key] = token
-        worker.progress.connect(lambda value, owner=token: self.progress_person_operation(owner, value))
-        worker.finished.connect(lambda owner=token, name=key: self._finish_tracked_activity_worker(name, owner))
+        if isinstance(worker, QThread): self._running_activity_threads[token] = worker
+        if progress: worker.progress.connect(lambda value, owner=token: self.progress_person_operation(owner, value))
+        (terminal or worker.finished).connect(lambda *args, owner=token, name=key: self._finish_tracked_activity_worker(name, owner))
+        if isinstance(worker, QThread):
+            # Some workers shadow finished with a result signal. Observe actual
+            # thread termination too, after queued result callbacks have run.
+            QThread.finished.__get__(worker, type(worker)).connect(
+                lambda: QTimer.singleShot(0, lambda: self._on_activity_thread_exited(key, token, label)))
+        return token
 
     def _finish_tracked_activity_worker(self, key: str, token: int) -> None:
-        if self._tracked_activity_workers.get(key) == token:
-            del self._tracked_activity_workers[key]
+        if self._tracked_activity_workers.get(key) == token: del self._tracked_activity_workers[key]
         self.finish_person_operation(token)
+
+    def _on_activity_thread_exited(self, key: str, token: int, label: str) -> None:
+        self._running_activity_threads.pop(token, None)
+        if self._tracked_activity_workers.get(key) == token: del self._tracked_activity_workers[key]
+        # finish_person_operation ignores tokens already released by a result
+        # or error callback, including when a newer worker has the same key.
+        self.finish_person_operation(token, f"{label} ended without reporting a result")
 
     def update_progress_bar_from_timer(self):
         if self.progress_bar is not None:  # Check if progress bar exists
@@ -408,8 +422,8 @@ class MainWindow(QMainWindow):
             if folder:
                 self.reset_progress_bar()
                 self.worker = self.knowledge_manager.create_search_worker(person_name, folder)
-                self.worker.progress.connect(self.store_progress_value)
                 self.worker.log_message.connect(self.display_message)
+                self._track_activity_worker(self.worker, "search_folder", "Folder Recognition Search")
                 self.worker.finished.connect(self.on_batch_finished)
                 self.worker.start()
 
@@ -424,8 +438,8 @@ class MainWindow(QMainWindow):
             if root:
                 self.reset_progress_bar()
                 self.worker = self.knowledge_manager.create_recursive_search_worker(person_name, root)
-                self.worker.progress.connect(self.store_progress_value)
                 self.worker.log_message.connect(self.display_message)
+                self._track_activity_worker(self.worker, "search_root", "Recursive Recognition Search")
                 self.worker.finished.connect(self.on_batch_finished)
                 self.worker.start()
 
@@ -787,6 +801,8 @@ class MainWindow(QMainWindow):
         self._dedup_worker.progress.connect(self.on_dedup_progress)  
         self._dedup_worker.log.connect(self.display_message)                  
         self._dedup_worker.finished.connect(self.on_dedup_done)
+        operation = self._track_activity_worker(self._dedup_worker, "dedup", "Duplicate Images Scan", progress=False)
+        self._dedup_worker.progress.connect(lambda done, total, phase, token=operation: self.progress_person_operation(token, int(100 * done / max(1, total))))
         # (Optional) errors
         self.reset_progress_bar()
         self.display_message("Starting Duplicate Images Scan…")
@@ -813,7 +829,6 @@ class MainWindow(QMainWindow):
         
     def on_dedup_progress(self, done: int, total: int, phase: str):
         pct = int(100 * done / max(1, total))
-        self.store_progress_value(pct)      # uses common timer 
         self.statusBar().showMessage(f"[Dedup] {phase}: {done}/{total} ({pct}%)", 2000)        
   
     #-------------------------------------------------------------------
@@ -1621,8 +1636,8 @@ class MainWindow(QMainWindow):
     def run_batch_session(self):
         self.reset_progress_bar()
         self.worker = self.knowledge_manager.run_batch_processing(self.settings)
-        self.worker.progress.connect(self.store_progress_value)
         self.worker.log_message.connect(self.display_message)
+        self._track_activity_worker(self.worker, "batch", "Batch Recognition")
         self.worker.finished.connect(self.on_batch_finished)
         self.worker.start()
 
@@ -1647,8 +1662,8 @@ class MainWindow(QMainWindow):
         threshold = float(self.settings.get("face_threshold", 0.4))
         self.reset_progress_bar()
         w = CrossCompareWorker(self.knowledge_manager, mode="faces", settings=self.settings)
-        w.progress.connect(self.update_progress_bar)
         w.log_message.connect(self.display_message)
+        operation = self._track_activity_worker(w, "compare_faces", "Face Cross-Compare")
 
         def _done(msg, rows):
             self.display_message(msg)
@@ -1657,6 +1672,7 @@ class MainWindow(QMainWindow):
             dlg.exec()
 
         w.finished.connect(_done)
+        w.error.connect(lambda *args, token=operation: self._finish_tracked_activity_worker("compare_faces", token))
         w.error.connect(lambda m: QMessageBox.warning(self, "Faces compare unavailable", m))
         w.finished.connect(w.deleteLater)
         self.display_message("[Compare] Starting face cross-compare…")
@@ -1669,8 +1685,8 @@ class MainWindow(QMainWindow):
 
         self.reset_progress_bar()
         w = CrossCompareWorker(self.knowledge_manager, mode="bodies", settings=self.settings)
-        w.progress.connect(self.update_progress_bar)
         w.log_message.connect(self.display_message)
+        operation = self._track_activity_worker(w, "compare_bodies", "Body Cross-Compare")
 
         def _done(msg, rows):
             self.display_message(msg)
@@ -1686,6 +1702,7 @@ class MainWindow(QMainWindow):
             dlg.exec()
 
         w.finished.connect(_done)
+        w.error.connect(lambda *args, token=operation: self._finish_tracked_activity_worker("compare_bodies", token))
         w.error.connect(lambda m: QMessageBox.warning(self, "Bodies compare unavailable", m))
         w.finished.connect(w.deleteLater)
         self.display_message("[Compare] Starting body cross-compare…")
@@ -1695,8 +1712,8 @@ class MainWindow(QMainWindow):
     def show_fused_similarity(self):
         self.reset_progress_bar()
         w = CrossCompareWorker(self.knowledge_manager, mode="fused", settings=self.settings)
-        w.progress.connect(self.update_progress_bar)
         w.log_message.connect(self.display_message)
+        operation = self._track_activity_worker(w, "compare_fused", "Fused Cross-Compare")
 
         def folder_getter(name: str):
             return self._folder_getter(name)
@@ -1714,6 +1731,7 @@ class MainWindow(QMainWindow):
             dlg.exec()
 
         w.finished.connect(_done)
+        w.error.connect(lambda *args, token=operation: self._finish_tracked_activity_worker("compare_fused", token))
         w.error.connect(lambda m: QMessageBox.warning(self, "Fused compare unavailable", m))
         w.finished.connect(w.deleteLater)
         self.display_message("[Compare] Starting fused (face+body) cross-compare…")
@@ -1731,8 +1749,8 @@ class MainWindow(QMainWindow):
 
         self.worker = MediaFolderScanWorker(rows, recursive=False)
         # wiring
-        self.worker.progress.connect(self.store_progress_value)  # smoother than update_progress_bar
         self.worker.log_message.connect(self.display_message)
+        self._track_activity_worker(self.worker, "media_scan", "Media Folder Scan")
         self.worker.finished.connect(self._on_media_scan_finished)
         # UI state
         self.display_message("Launching media folder scan…")
@@ -1740,7 +1758,6 @@ class MainWindow(QMainWindow):
         self.worker.start()
         
     def _on_media_scan_finished(self, results):
-        self.store_progress_value(100)
         dlg = MediaFoldersReportDialog(results, parent=self)
         dlg.exec()
         self.display_message("Media folder report displayed")
