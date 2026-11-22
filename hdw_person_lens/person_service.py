@@ -30,6 +30,7 @@ import threading
 # local imports
 from .kb_layout import iter_kb_person_dirs
 from .config    import DEFAULT_RECOGNITION_EXTENSIONS
+from .kb_reference_encoding import ReferenceSourceSnapshot
 
 class PersonServiceError(RuntimeError):
     """Base error for coordinated person operations."""
@@ -850,9 +851,12 @@ class PersonService:
         body_count = sum(value == name for value in persons.get("body_names", []))
         return face_count, body_count
 
-    def _snapshot_person_encodings(self, name: str) -> dict[str, list[tuple[int, Any]]]:
+    def _snapshot_person_encodings(self, name: str) -> dict[str, Any]:
         persons = self.knowledge_manager.persons
-        snapshot: dict[str, list[tuple[int, Any]]] = {}
+        snapshot: dict[str, Any] = {}
+        provenance = (persons.get("metadata") or {}).get("reference_provenance", {})
+        if name in provenance:
+            snapshot["reference_provenance"] = copy.deepcopy(provenance[name])
         for kind in ("face", "body"):
             names = persons.get(f"{kind}_names", [])
             encodings = persons.get(f"{kind}_encodings", [])
@@ -867,7 +871,7 @@ class PersonService:
             ]
         return snapshot
 
-    def _restore_person_encodings(self, name: str, snapshot: dict[str, list[tuple[int, Any]]],) -> None:
+    def _restore_person_encodings(self, name: str, snapshot: dict[str, Any],) -> None:
         manager = self.knowledge_manager
         manager.remove_person_encodings(name)
         for kind in ("face", "body"):
@@ -877,6 +881,8 @@ class PersonService:
                 index = min(original_index, len(names))
                 names.insert(index, name)
                 encodings.insert(index, encoding)
+        if "reference_provenance" in snapshot:
+            manager.persons.setdefault("metadata", {}).setdefault("reference_provenance", {})[name] = copy.deepcopy(snapshot["reference_provenance"])
         manager.save_encodings()
             
     @contextmanager
@@ -964,6 +970,24 @@ class PersonService:
                 images_processed=len(image_paths),
                 warnings=tuple(warnings),
             )
+
+    def capture_selected_reference_sources(self, *, name: str, paths: Sequence[str]) -> ReferenceSourceSnapshot:
+        """Bind a proposed explicit selection to the current KB image signatures."""
+        with self._operation_lock:
+            return self.knowledge_manager.capture_selected_reference_sources(self._clean_name(name), list(paths))
+
+    def reencode_selected_references(self, *, name: str, snapshot: ReferenceSourceSnapshot,
+        on_log: Callable[[str], None] | None = None, on_progress: Callable[[int], None] | None = None) -> PersonOperationResult:
+        """Explicit, selected-only encoding operation, not wired to the UI yet."""
+        with self._operation_lock:
+            name = self._clean_name(name)
+            with self._forward_manager_signals(on_log, on_progress):
+                faces, bodies = self.knowledge_manager.reencode_person_selected(name, snapshot)
+            return PersonOperationResult(operation="reencode_selected", name=name,
+                database_record_exists=self._person_record(name) is not None, knowledge_base_changed=True,
+                face_encodings=faces, body_encodings=bodies, images_processed=len(snapshot.selected),
+                warnings=tuple(message for count, message in ((faces, "No face encodings were produced."),
+                    (bodies, "No body encodings were produced.")) if count == 0))
 
     def reencode_persons(self, *, names: Sequence[str], continue_on_error: bool = True, on_log: Callable[[str], None] | None = None, on_progress: Callable[[int], None] | None = None,
         on_person_done: Callable[[str, int, int], None] | None = None, stop_flag: Callable[[], bool] | None = None,) -> ReencodeBatchResult:
@@ -1093,4 +1117,3 @@ class PersonService:
                 failures=tuple(failures),
                 cancelled=cancelled,
             )
-                    

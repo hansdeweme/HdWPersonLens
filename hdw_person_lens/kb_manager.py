@@ -4,7 +4,7 @@
 # Licensed under the MIT License (https://opensource.org/licenses/MIT).
 # Part of the Person Recognition project for managing a knowledge base of known individuals and their associated media.
 #
-import shutil, pickle, itertools, time
+import shutil, pickle, itertools, time, copy
 import tempfile
 import os, io, contextlib
 import numpy as np
@@ -26,6 +26,7 @@ from   .kb_workers   import PersonSearcher, PersonRecursiveSearcher, BatchProces
 from   .recognition_decision import _rank_body_identities, _rank_face_identities, _face_candidate, _body_candidate, decide_identity, build_identity_contenders
 from   .config        import ENCODINGS_FILENAME, DEFAULT_RECOGNITION_EXTENSIONS
 from   .encoding_bank_unpickler import load_encoding_bank
+from   .kb_reference_encoding import ReferenceSourceSnapshot, capture_reference_sources, verify_reference_sources
 import warnings
 # Torch’s future change: torch.load(weights_only=False) – torchreid triggers this
 warnings.filterwarnings(
@@ -137,6 +138,30 @@ class KnowledgeBaseManager(QObject):
         metadata = payload.get("metadata")
         if metadata is not None and not isinstance(metadata, dict,):
             raise ValueError("Encoding metadata must be a dictionary.")
+        provenance = (metadata or {}).get("reference_provenance", {})
+        if not isinstance(provenance, dict):
+            raise ValueError("Reference provenance must be a dictionary.")
+        for name, records in provenance.items():
+            if not isinstance(name, str) or not name or not isinstance(records, list):
+                raise ValueError("Invalid reference provenance entry.")
+            images = set()
+            for record in records:
+                if not isinstance(record, dict) or not all(key in record for key in ("image", "signature", "face", "body")):
+                    raise ValueError("Invalid reference provenance record.")
+                if not isinstance(record["image"], str) or not isinstance(record["signature"], str):
+                    raise ValueError("Invalid reference source signature.")
+                image, signature = record["image"], record["signature"]
+                if (not image or Path(image).name != image or image in (".", "..") or image in images
+                        or len(signature) != 64 or any(char not in "0123456789abcdef" for char in signature)):
+                    raise ValueError("Invalid or duplicate reference source provenance.")
+                images.add(image)
+                if type(record["face"]) is not bool or type(record["body"]) is not bool:
+                    raise ValueError("Invalid reference encoding outcome.")
+            # Filtering each person's vectors preserves the selected-image order.
+            # The success flags must account for every vector in each modality.
+            for kind in ("face", "body"):
+                if sum(record[kind] for record in records) != list(payload[f"{kind}_names"]).count(name):
+                    raise ValueError(f"{kind.title()} reference provenance does not match the encoding bank.")
         
     @classmethod
     def _load_validated_pickle(cls, path: str,):
@@ -750,6 +775,7 @@ class KnowledgeBaseManager(QObject):
         self.persons['face_names'] = [n for n in self.persons['face_names'] if n != name]
         self.persons['body_encodings'] = [enc for i, enc in enumerate(self.persons['body_encodings']) if self.persons['body_names'][i] != name]
         self.persons['body_names'] = [n for n in self.persons['body_names'] if n != name]
+        (self.persons.get("metadata") or {}).get("reference_provenance", {}).pop(name, None)
 
     def get_person_folder(self, name: str) -> str:
         """Return the knowledge-base folder for a person."""
@@ -783,6 +809,9 @@ class KnowledgeBaseManager(QObject):
                 if name == old_name:
                     body_names[index] = new_name
                     body_count += 1
+            provenance = (self.persons.get("metadata") or {}).get("reference_provenance", {})
+            if old_name in provenance:
+                provenance[new_name] = provenance.pop(old_name)
         return face_count, body_count
 
     def remove_person_encodings(self, name: str, ) -> tuple[int, int]:
@@ -841,6 +870,8 @@ class KnowledgeBaseManager(QObject):
 
         t_enc0 = time.perf_counter()
         with self._bank_lock:
+            # Appending legacy inputs invalidates any earlier selected-only provenance.
+            (self.persons.get("metadata") or {}).get("reference_provenance", {}).pop(name, None)
             if reason == "empty_body_bank":
                 self._set_body_pipeline_metadata(extractor)
             for idx, image_path in enumerate(images):
@@ -1014,10 +1045,91 @@ class KnowledgeBaseManager(QObject):
                     if n == old_name:
                         self.persons["body_names"][i] = new_name
                         updated_bodies += 1
+            provenance = (self.persons.get("metadata") or {}).get("reference_provenance", {})
+            if old_name in provenance:
+                provenance[new_name] = provenance.pop(old_name)
 
         self.save_encodings()
         self.progress_signal.emit(f"Updated {updated_faces} face and {updated_bodies} body encodings.")
         self.progress_signal.emit(f"Person '{old_name}' successfully renamed to '{new_name}'.")
+
+    def capture_selected_reference_sources(self, name: str, paths: list[str]) -> ReferenceSourceSnapshot:
+        """Capture a review snapshot before the caller asks for selected reference encoding."""
+        if not name or Path(name).name != name or name in (".", ".."):
+            raise ValueError("Invalid KB person name.")
+        return capture_reference_sources(self._get_person_folder(name), paths, DEFAULT_RECOGNITION_EXTENSIONS)
+
+    def reencode_person_selected(self, name: str, snapshot: ReferenceSourceSnapshot) -> tuple[int, int]:
+        """Replace one person's vectors from reviewed inputs; atomically publish their provenance.
+
+        This deliberately does not change reencode_person(), which continues to use all KB images.
+        No GUI action calls this method in v1.7.1.
+        """
+        if not isinstance(snapshot, ReferenceSourceSnapshot):
+            raise TypeError("A reviewed reference source snapshot is required.")
+        with self._bank_lock:
+            if not name or Path(name).name != name or name in (".", ".."):
+                raise ValueError("Invalid KB person name.")
+            if snapshot.folder != str(Path(self._get_person_folder(name)).absolute()):
+                raise ValueError("Reference snapshot belongs to a different person or directory.")
+            verify_reference_sources(snapshot, DEFAULT_RECOGNITION_EXTENSIONS)
+            extractor = self.get_body_extractor()
+            compatible, reason = self._body_pipeline_compatibility(extractor)
+            if not compatible:
+                raise RuntimeError(f"Incompatible body encoding pipeline: {reason}")
+
+            faces, bodies, images, records = [], [], [], []
+            for index, (image_name, _, _, digest) in enumerate(snapshot.selected):
+                path = str(Path(snapshot.folder) / image_name)
+                image = _load_rgb_image(path)
+                face, detail = self._extract_primary_face_embedding(image, context="reencode")
+                if face is not None:
+                    faces.append(face)
+                else:
+                    self.progress_signal.emit(f"[Face] {image_name} skipped: {detail.get('status', 'unknown')}")
+                records.append({"image": image_name, "signature": digest, "face": face is not None, "body": False})
+                images.append(image)
+                self.progress_update.emit(int((index + 1) / len(snapshot.selected) * 50))
+
+            if hasattr(extractor, "extract_batch"):
+                results = extractor.extract_batch(images, batch_size=int(self.settings.get("REID_BATCH", 16)))
+            else:
+                results = [extractor(image) for image in images]
+            if len(results) != len(images):
+                raise RuntimeError("Body extractor returned an incomplete result set; no bank changes were made.")
+            for record, result in zip(records, results):
+                if result is None:
+                    continue
+                vector = np.asarray(result, dtype=np.float32).reshape(-1)
+                if vector.size and np.isfinite(vector).all() and np.linalg.norm(vector) > 1e-12:
+                    bodies.append(vector)
+                    record["body"] = True
+            if not faces and not bodies:
+                raise RuntimeError("Selected references produced no usable encodings; the bank was not changed.")
+            verify_reference_sources(snapshot, DEFAULT_RECOGNITION_EXTENSIONS)
+
+            original = self.persons
+            staged = copy.deepcopy(original)
+            staged["metadata"] = dict(staged.get("metadata") or {})
+            self.persons = staged
+            try:
+                self._remove_encodings_for_name(name)
+                if reason == "empty_body_bank" and bodies:
+                    self._set_body_pipeline_metadata(extractor)
+                staged["face_encodings"].extend(faces)
+                staged["face_names"].extend([name] * len(faces))
+                staged["body_encodings"].extend(bodies)
+                staged["body_names"].extend([name] * len(bodies))
+                staged.setdefault("metadata", {}).setdefault("reference_provenance", {})[name] = records
+                self._validate_encodings_payload(staged)
+                verify_reference_sources(snapshot, DEFAULT_RECOGNITION_EXTENSIONS)
+                self.save_encodings()
+            except Exception:
+                self.persons = original
+                raise
+            self.progress_update.emit(100)
+            self.progress_signal.emit(f"[KnowledgeBase] Selected references saved for {name}: {len(faces)} faces, {len(bodies)} bodies.")
+            return len(faces), len(bodies)
 
     #---------------------------------------------------------------------
     # Re-encode Person
