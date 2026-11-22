@@ -39,6 +39,7 @@ from .recognition_gui_dialogs import AboutDialog, SettingsDialog, KBStatsDialog,
 from .person_db_gui           import PersonDbEditorWidget
 from .persons_workbench       import PersonsWorkbench
 from .person_context          import PersonContext
+from .person_action_policy    import ACTION_LABELS, person_action_allowed
 from .person_service          import PersonService, ReencodeBatchResult
 from .knowledge_workers       import ReencodePersonsWorker
 from .kb_gallery_dialog       import KBGalleryOptimizerDialog
@@ -1574,6 +1575,20 @@ class MainWindow(QMainWindow):
 
     def _on_workbench_person_action(self, action: str, name: str) -> None:
         """Use existing management dialogs and worker APIs with workbench selection context."""
+        if action not in ACTION_LABELS:
+            self.display_message(f"[Persons Workbench] Unsupported management action: {action}")
+            return
+        if action != "add":
+            selected = self.persons_workbench._current_person_name()
+            if name != selected or name != self.person_context.name or self.person_db.get_by_name(name) is None:
+                QMessageBox.warning(self, ACTION_LABELS[action], "The active person changed or is no longer available. Refresh the Workbench and retry.")
+                return
+            state = self.person_service.get_person_state(name)
+            allowed, reason = person_action_allowed(action, name, state)
+            if not allowed:
+                QMessageBox.warning(self, ACTION_LABELS[action], reason)
+                return
+            self.statusBar().showMessage(f"{ACTION_LABELS[action]} · {name}", 5000)
         if action == "add": self._show_add_person_dialog()
         elif action == "rename": self._show_rename_person_dialog(name)
         elif action == "remove": self._show_remove_person_dialog(name)
@@ -1592,10 +1607,11 @@ class MainWindow(QMainWindow):
             self._start_reencode_worker(names=[name])
 
     def _on_person_images_updated(self, name: str, added: int, removed: int) -> None:
+        self.person_context.select(name)
         self.display_message(f"[PersonService] Updated images for {name}: +{added}, -{removed}." )
         self.reset_progress_bar()
         if hasattr(self, "persons_workbench"):
-            self.persons_workbench.refresh()
+            self.persons_workbench.refresh(select_name=name)
     
     def reencode_single_person(self):
         face_names = self.knowledge_manager.persons.get("face_names", [])

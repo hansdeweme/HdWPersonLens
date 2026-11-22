@@ -35,6 +35,7 @@ from .person_kb_assessment_workflow import PersonKBAssessmentWorkflow
 from .personlens_theme import apply_workbench_theme, initial_split_sizes
 from .person_db_gui import SchemaForm, load_schema
 from .person_profile_merge import merge_profile
+from .person_action_policy import ACTION_LABELS, person_action_allowed
 
 
 class _PortraitSignals(QObject):
@@ -224,10 +225,14 @@ class PersonsWorkbench(QWidget):
             button.clicked.connect(lambda _checked=False, action=key: self._request_person_action(action))
             actions_row.addWidget(button)
             self.person_actions[key] = button
+        self.action_target = QLabel("No person selected")
+        self.action_target.setObjectName("personStatus")
+        self.action_target.setAccessibleName("Person management target")
         self._update_person_actions("")
         self.portrait_status = QLabel()
         self.portrait_status.setObjectName("personStatus")
         actions_row.addStretch(1)
+        actions_row.addWidget(self.action_target)
         actions_row.addWidget(self.portrait_status)
         root.addLayout(actions_row)
 
@@ -617,11 +622,11 @@ class PersonsWorkbench(QWidget):
 
     def _update_person_actions(self, name):
         state = self.person_service.get_person_state(name) if name else None
-        self.person_actions["add"].setEnabled(True)
-        self.person_actions["rename"].setEnabled(bool(state))
-        self.person_actions["remove"].setEnabled(bool(state))
-        self.person_actions["images"].setEnabled(bool(state and state.has_recognition_state))
-        self.person_actions["reencode"].setEnabled(bool(state and state.has_recognition_state and state.image_count))
+        self.action_target.setText(f"Managing: {name}" if name else "No person selected")
+        for action, button in self.person_actions.items():
+            allowed, reason = person_action_allowed(action, name, state)
+            button.setEnabled(allowed)
+            button.setStatusTip(reason or f"{ACTION_LABELS[action]}" + (f" · {name}" if name else ""))
 
     def _request_person_action(self, action):
         name = self._current_person_name() if action != "add" else ""
