@@ -276,6 +276,7 @@ class MainWindow(QMainWindow):
             self.person_db, self.person_service, self.settings, parent=self
         )
         self.persons_workbench.portrait_error.connect(self.display_message)
+        self.persons_workbench.encoding_activity.connect(self.display_message)
         self.persons_workbench.person_action_requested.connect(self._on_workbench_person_action)
         self.main_tabs.addTab(self.persons_workbench, "Persons Workbench")
         self.person_context = PersonContext()

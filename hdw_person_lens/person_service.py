@@ -973,8 +973,12 @@ class PersonService:
 
     def capture_selected_reference_sources(self, *, name: str, paths: Sequence[str]) -> ReferenceSourceSnapshot:
         """Bind a proposed explicit selection to the current KB image signatures."""
-        with self._operation_lock:
+        if not self._operation_lock.acquire(blocking=False):
+            raise PersonServiceError("Another person operation is running. Rebuild the shortlist when it finishes.")
+        try:
             return self.knowledge_manager.capture_selected_reference_sources(self._clean_name(name), list(paths))
+        finally:
+            self._operation_lock.release()
 
     def reencode_selected_references(self, *, name: str, snapshot: ReferenceSourceSnapshot,
         on_log: Callable[[str], None] | None = None, on_progress: Callable[[int], None] | None = None) -> PersonOperationResult:

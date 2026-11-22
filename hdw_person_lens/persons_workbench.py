@@ -155,6 +155,7 @@ class PersonsWorkbench(QWidget):
     person_selected = pyqtSignal(str)
     portrait_error = pyqtSignal(str)
     person_action_requested = pyqtSignal(str, str)
+    encoding_activity = pyqtSignal(str)
 
     def __init__(self, person_db, person_service, settings=None, parent=None):
         super().__init__(parent)
@@ -377,6 +378,8 @@ class PersonsWorkbench(QWidget):
             panel.image_requested.connect(self._navigate_assessment_image)
         self.curation.image_requested.connect(self._navigate_assessment_image)
         self.encoding_impact.image_requested.connect(self._navigate_assessment_image)
+        self.encoding_impact.activity_message.connect(self.encoding_activity)
+        self.encoding_impact.encoding_completed.connect(self._selected_encoding_completed)
         self.collection.assessment_invalidated.connect(self.recommendations.invalidate_collection)
         self.identity.assessment_invalidated.connect(self.recommendations.invalidate_identity)
         self.collection.assessment_invalidated.connect(self.curation.invalidate_collection)
@@ -397,7 +400,7 @@ class PersonsWorkbench(QWidget):
         review_layout = QVBoxLayout(review_group)
         review_layout.addWidget(self.curation)
         assessment_layout.addWidget(review_group)
-        impact_group = QGroupBox("Encoding impact preview · read-only")
+        impact_group = QGroupBox("Controlled reference encoding · review and confirm")
         impact_layout = QVBoxLayout(impact_group)
         impact_layout.addWidget(self.encoding_impact)
         assessment_layout.addWidget(impact_group)
@@ -517,6 +520,7 @@ class PersonsWorkbench(QWidget):
         if self._portrait_stopping: return
         self._portrait_stopping = True
         self._portrait_generation += 1
+        self.encoding_impact.shutdown()
         self.recommendations.shutdown()
         self.identity.shutdown()
         self.collection.shutdown()
@@ -526,6 +530,11 @@ class PersonsWorkbench(QWidget):
                 self._portrait_pending.pop(key, None)
         self._portrait_runner.close()
         self._portrait_pool.waitForDone(5000)
+
+    def _selected_encoding_completed(self, name, result):
+        if self._portrait_stopping or name != self._current_person_name(): return
+        self.kb_status.setText(f"KB: {len(self.person_service.get_person_image_paths(name))} image(s) · "
+            f"Controlled encoding: {result.face_encodings} face / {result.body_encodings} body embeddings")
 
     def _portrait_ready(self, name, generation, data):
         self._portrait_pending.pop((generation, name), None)
