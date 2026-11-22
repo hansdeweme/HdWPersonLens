@@ -44,7 +44,8 @@ def _distance_lookup(identity, candidates):
     return {(a, b): values[i][j] for i, a in enumerate(paths) for j, b in enumerate(paths)}
 
 
-def build_recommendations(collection: dict, identity: dict, *, target_size=12, diversity_weight=0.35) -> dict:
+def build_recommendations(collection: dict, identity: dict, *, target_size=12, diversity_weight=0.35,
+                          review_decisions=None) -> dict:
     """Only a strict, complete face-consensus result permits provisional shortlisting."""
     target_size = max(1, int(target_size))
     diversity_weight = min(0.7, max(0.0, float(diversity_weight)))
@@ -60,6 +61,7 @@ def build_recommendations(collection: dict, identity: dict, *, target_size=12, d
                 and not collection.get("errors") and set(c_rows) == set(i_rows))
     consensus = identity.get("status") == "consensus"
     eligible = complete and consensus
+    decisions = review_decisions if isinstance(review_decisions, dict) else {}
     rows = []
     for path in sorted(set(c_rows) | set(i_rows) | set(c_errors)):
         c = c_rows.get(path, {})
@@ -74,11 +76,14 @@ def build_recommendations(collection: dict, identity: dict, *, target_size=12, d
         finding = ("Review identity outlier" if status == "review_outlier" else
                    "Review possible duplicate" if duplicate_of else
                    "Single-face identity support" if status == "supported" else "Manual review")
+        decision = decisions.get(path) if isinstance(path, str) else None
+        decision = decision if decision in ("keep", "exclude", "later") else None
         rows.append({"path": path, "score": score, "novelty": None, "rank_score": score, "rank": None,
                      "identity": status, "duplicate_of": duplicate_of,
                      "error": c_errors.get(path) or i.get("error"),
-                     "finding": finding, "recommendation": "review", "reason": ""})
-    candidates = [r for r in rows if r["identity"] == "supported" and not r["duplicate_of"] and not r["error"]]
+                     "finding": finding, "recommendation": "review", "reason": "", "review_decision": decision})
+    candidates = [r for r in rows if r["identity"] == "supported" and not r["duplicate_of"]
+                  and not r["error"] and r["review_decision"] != "exclude"]
     candidates.sort(key=lambda r: (-r["score"], r["path"].casefold()))
     distances = _distance_lookup(identity, candidates) if eligible and diversity_weight > 0 else None
     diversity_used = distances is not None and len(candidates) > 1
@@ -91,7 +96,7 @@ def build_recommendations(collection: dict, identity: dict, *, target_size=12, d
                     nearest = min(distances[(row["path"], prior["path"])] for prior in selected)
                     row["novelty"] = round(min(1.0, nearest / threshold), 3)
                     row["rank_score"] = round((1 - diversity_weight) * row["score"] + diversity_weight * row["novelty"], 3)
-            row = min(remaining, key=lambda item: (-item["rank_score"], item["path"].casefold()))
+            row = min(remaining, key=lambda item: (item["review_decision"] != "keep", -item["rank_score"], item["path"].casefold()))
             remaining.remove(row)
             selected.append(row)
         for rank, row in enumerate(selected, start=1):
@@ -99,14 +104,17 @@ def build_recommendations(collection: dict, identity: dict, *, target_size=12, d
             row["rank"] = rank
             novelty = (f"; novelty {row['novelty']:.2f} vs selected references" if row["novelty"] is not None else
                        "; quality anchor" if diversity_used else "; no validated diversity evidence")
-            row["reason"] = (f"Rank {rank}: supported face, no duplicate; technical {row['score']:.3f}{novelty}")
+            priority = "; explicitly kept" if row["review_decision"] == "keep" else ""
+            row["reason"] = (f"Rank {rank}: supported face, no duplicate; technical {row['score']:.3f}{novelty}{priority}")
     for row in rows:
         if row["recommendation"] == "shortlist": continue
         if row["error"]: row["reason"] = f"Image assessment failed: {row['error']}"
+        elif row["review_decision"] == "exclude": row["reason"] = "Excluded by current review decision (advisory only)"
         elif row["identity"] == "review_outlier": row["reason"] = "Embedding differs from a clear peer majority; verify manually"
         elif row["duplicate_of"]: row["reason"] = f"Possible duplicate of {Path(row['duplicate_of']).name}"
         elif not eligible: row["reason"] = "Evidence incomplete or identity consensus not established"
         elif row in candidates: row["reason"] = "Supported reference; outside current shortlist target"
+        elif row["review_decision"] == "keep": row["reason"] = "Keep noted, but face eligibility safeguards prohibit shortlisting"
         else: row["reason"] = "Single-face identity support not established"
     rows.sort(key=lambda r: (0 if r["rank"] is not None else 1, r["rank"] or 0,
                              -r["score"], r["path"].casefold()))
@@ -114,4 +122,5 @@ def build_recommendations(collection: dict, identity: dict, *, target_size=12, d
               "Provisional quality-only shortlist; diversity evidence unavailable" if eligible else
               "Manual review only: complete collection and clear identity consensus required")
     return {"status": "provisional" if eligible else "review_only", "reason": reason,
+            "review_aware": bool(decisions),
             "diversity_used": diversity_used, "shortlisted": sum(r["recommendation"] == "shortlist" for r in rows), "rows": rows}

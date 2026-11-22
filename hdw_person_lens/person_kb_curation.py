@@ -12,6 +12,7 @@ from .kb_reference_recommendations import source_snapshot
 
 class PersonKBCurationPanel(QWidget):
     image_requested = pyqtSignal(str)
+    decision_changed = pyqtSignal()
 
     def __init__(self, parent=None, *, store_path=None):
         super().__init__(parent)
@@ -96,6 +97,16 @@ class PersonKBCurationPanel(QWidget):
             QMessageBox.warning(self, "Review not saved", str(exc))
             return
         self._render(select=path)
+        self.decision_changed.emit()
+
+    def current_decisions(self, person, paths):
+        """Only current decisions for the exact selected person and KB membership."""
+        if not person or person != self.person or set(paths) != set(self.paths): return {}
+        decisions = {}
+        for row in evidence_rows(paths):
+            decision, current = self.store.get(person, row["path"], row["signature"])
+            if current: decisions[row["path"]] = decision
+        return decisions
 
     def _update_buttons(self):
         selected = bool(self._selected())

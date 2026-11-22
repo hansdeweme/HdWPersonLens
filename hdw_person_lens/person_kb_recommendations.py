@@ -5,7 +5,7 @@ from pathlib import Path
 
 from PyQt6.QtCore import QObject, QRunnable, QSize, QThreadPool, QTimer, Qt, pyqtSignal
 from PyQt6.QtGui import QBrush, QColor, QIcon, QImage, QImageReader, QPixmap
-from PyQt6.QtWidgets import (QAbstractItemView, QApplication, QHBoxLayout, QLabel, QListWidget, QListWidgetItem,
+from PyQt6.QtWidgets import (QAbstractItemView, QApplication, QCheckBox, QHBoxLayout, QLabel, QListWidget, QListWidgetItem,
                              QPushButton, QSlider, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget)
 
 from .kb_reference_recommendations import build_recommendations, source_snapshot
@@ -45,13 +45,14 @@ class PersonKBRecommendationPanel(QWidget):
     shortlist_failed = pyqtSignal(str)
     sources_stale = pyqtSignal(str)
     image_requested = pyqtSignal(str)
-    def __init__(self, settings=None, parent=None, *, source_getter=None):
+    def __init__(self, settings=None, parent=None, *, source_getter=None, decision_getter=None):
         super().__init__(parent)
         self.target_size = max(1, int((settings or {}).get("kb_gallery_target_size", 12)))
         self.diversity_weight = float((settings or {}).get("kb_gallery_diversity_weight", 0.35))
         self._paths = []
         self._person = ""
         self._source_getter = source_getter
+        self._decision_getter = decision_getter
         self._collection = None
         self._identity = None
         self._built = False
@@ -77,6 +78,10 @@ class PersonKBRecommendationPanel(QWidget):
         self.summary.setWordWrap(True)
         header.addWidget(self.summary, 1)
         layout.addLayout(header)
+        self.review_mode = QCheckBox("Review-aware shortlist (apply current Keep / Exclude decisions)")
+        self.review_mode.setToolTip("Only current decisions are applied; face eligibility and identity consensus remain mandatory.")
+        self.review_mode.toggled.connect(self._review_mode_changed)
+        layout.addWidget(self.review_mode)
         weights = QHBoxLayout()
         weights.addWidget(QLabel("Quality"))
         self.weight_slider = QSlider(Qt.Orientation.Horizontal)
@@ -93,6 +98,7 @@ class PersonKBRecommendationPanel(QWidget):
         quality_col, diversity_col = QVBoxLayout(), QVBoxLayout()
         quality_heading = QLabel("Quality-only baseline")
         diversity_heading = QLabel("Diversity-aware shortlist · provisional")
+        self.quality_heading, self.diversity_heading = quality_heading, diversity_heading
         quality_heading.setObjectName("comparisonHeading")
         diversity_heading.setObjectName("comparisonHeading")
         quality_col.addWidget(quality_heading)
@@ -135,6 +141,12 @@ class PersonKBRecommendationPanel(QWidget):
         self.diversity_weight = value / 100.0
         self._update_weight_label()
         if self._built: self._rebuild_timer.start()
+
+    def review_decisions_changed(self, *_args):
+        if self._built and self.review_mode.isChecked() and not self._thumb_stopping: self._rebuild_timer.start()
+
+    def _review_mode_changed(self, *_args):
+        if self._built and not self._thumb_stopping: self._rebuild_timer.start()
 
     def _clear_views(self):
         self._rebuild_timer.stop()
@@ -219,20 +231,31 @@ class PersonKBRecommendationPanel(QWidget):
             return
         self.shortlist_started.emit()
         try:
+            review_aware = self.review_mode.isChecked()
+            decisions = self._decision_getter(self._person, list(self._paths)) if review_aware and self._decision_getter else {}
             result = build_recommendations(self._collection, self._identity, target_size=self.target_size,
-                                           diversity_weight=self.diversity_weight)
+                                           diversity_weight=self.diversity_weight, review_decisions=decisions)
             baseline = build_recommendations(self._collection, self._identity, target_size=self.target_size,
-                                             diversity_weight=0)
+                                             diversity_weight=self.diversity_weight if review_aware else 0)
         except Exception as exc:
             self._clear_views()
             message = f"Shortlist unavailable: {exc}"
             self.summary.setText(message)
             self.shortlist_failed.emit(message)
             return
+        if not self._reports_current():
+            self._clear_views()
+            self.sources_stale.emit("KB images changed during shortlist generation; rerun assessments")
+            return
         diverse_paths = {r["path"] for r in result["rows"] if r["recommendation"] == "shortlist"}
         baseline_paths = {r["path"] for r in baseline["rows"] if r["recommendation"] == "shortlist"}
         changed = len(diverse_paths - baseline_paths)
-        self.summary.setText(f"{result['shortlisted']} proposed · {changed} differ from quality-only · {result['reason']}")
+        mode = (f"review-aware ({sum(d == 'keep' for d in decisions.values())} Keep, "
+                f"{sum(d == 'exclude' for d in decisions.values())} Exclude)" if review_aware else "automatic")
+        comparison = "automatic diversity" if review_aware else "quality-only"
+        self.quality_heading.setText("Automatic diversity shortlist" if review_aware else "Quality-only baseline")
+        self.diversity_heading.setText("Review-aware shortlist · provisional" if review_aware else "Diversity-aware shortlist · provisional")
+        self.summary.setText(f"{result['shortlisted']} proposed · {changed} differ from {comparison} · {mode} · {result['reason']}")
         self._built = True
         self.weight_slider.setEnabled(True)
         self._fill_cards(self.quality_cards, baseline["rows"], set())

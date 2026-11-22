@@ -355,6 +355,8 @@ class PersonsWorkbench(QWidget):
         self.recommendations = PersonKBRecommendationPanel(self.settings, self,
                                                            source_getter=self.person_service.get_person_image_paths)
         self.curation = PersonKBCurationPanel(self)
+        self.recommendations._decision_getter = self.curation.current_decisions
+        self.curation.decision_changed.connect(self.recommendations.review_decisions_changed)
         for title, panel in (("Collection quality", self.collection), ("Identity consistency", self.identity),
                              ("Reference shortlist", self.recommendations)):
             group = QGroupBox(title)
