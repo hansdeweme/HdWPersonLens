@@ -25,7 +25,7 @@ from   typing          import Any, Dict, List, Tuple, Callable, Optional
 from   PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QFormLayout, QVBoxLayout, QHBoxLayout, QGridLayout, QGroupBox, QScrollArea, QLineEdit, QComboBox, QDoubleSpinBox
 from   PyQt6.QtWidgets import QSpinBox, QCheckBox, QPushButton, QLabel, QFileDialog, QMessageBox, QListWidget, QListWidgetItem, QSplitter
 from   PyQt6.QtCore    import Qt, QRegularExpression, QTimer, pyqtSignal
-from   PyQt6.QtGui     import QRegularExpressionValidator
+from   PyQt6.QtGui     import QKeySequence, QRegularExpressionValidator, QShortcut
 # local imports
 from .person_db         import PersonDB
 from .person_service    import PersonService
@@ -392,9 +392,18 @@ class PersonDbEditorWidget(QWidget):
         self.left_layout = QVBoxLayout(self.left_panel)
         self.search_box = QLineEdit(self.left_panel)
         self.search_box.setPlaceholderText("Search by personName…")
+        self.search_box.setAccessibleName("Search database persons")
+        self.search_box.setToolTip("Filter database records by person name (Ctrl+F).")
+        self.search_shortcut = QShortcut(QKeySequence("Ctrl+F"), self)
+        self.search_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        self.search_shortcut.activated.connect(self._focus_search)
+        self.clear_search_shortcut = QShortcut(QKeySequence("Escape"), self.search_box)
+        self.clear_search_shortcut.setContext(Qt.ShortcutContext.WidgetShortcut)
+        self.clear_search_shortcut.activated.connect(self.search_box.clear)
         self.search_box.textChanged.connect(self.refresh_list)
         self.left_layout.addWidget(self.search_box)
         self.list_widget = QListWidget(self.left_panel)
+        self.list_widget.setAccessibleName("Database person records")
         self.list_widget.itemSelectionChanged.connect(self.on_select)
         self.left_layout.addWidget(self.list_widget, 1,)
         self.splitter.addWidget(self.left_panel)
@@ -418,6 +427,18 @@ class PersonDbEditorWidget(QWidget):
         self.btn_delete = QPushButton("Delete DB Record Only", self.right_panel,)
         self.btn_reload = QPushButton("Reload File", self.right_panel,)
         self.btn_export = QPushButton("Save File", self.right_panel,)
+        action_tips = (
+            (self.btn_new, "Start a new unsaved database record."),
+            (self.btn_validate, "Validate the current form against the person schema."),
+            (self.btn_save, "Create or update the current database record."),
+            (self.btn_duplicate, "Create a new record using the current form values."),
+            (self.btn_delete, "Delete only the database record; retain KB profiles and media."),
+            (self.btn_reload, "Discard unsaved file changes and reload database records."),
+            (self.btn_export, "Save database changes to the configured file."),
+        )
+        for button, tip in action_tips:
+            button.setAccessibleName(button.text())
+            button.setToolTip(tip)
         self.btn_save.setProperty("themeRole", "primary")
         self.btn_delete.setProperty("themeRole", "danger")
         self.btn_new.clicked.connect(self.on_new)
@@ -444,6 +465,10 @@ class PersonDbEditorWidget(QWidget):
         self.splitter.setStretchFactor(0, 0)
         self.splitter.setStretchFactor(1, 1)
         
+    def _focus_search(self):
+        self.search_box.setFocus(Qt.FocusReason.ShortcutFocusReason)
+        self.search_box.selectAll()
+
     def _update_scrollbar_policy(self) -> None:
         form_size = self.form_widget.sizeHint()
         viewport = self.scroll.viewport()

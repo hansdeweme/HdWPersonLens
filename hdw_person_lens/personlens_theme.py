@@ -215,6 +215,12 @@ QWidget#activityTab QPlainTextEdit#activityConsole {
     border-radius: 7px; padding: 10px; selection-background-color: #2b6cb0;
     font-family: "Consolas", "Cascadia Mono", monospace; font-size: 10pt;
 }
+QWidget#activityTab QPlainTextEdit#activityConsole:focus { border-color: #90cdf4; }
+QWidget#activityTab QTableWidget#activityOperations {
+    background: #1a202c; color: #e2e8f0; border: 1px solid #384658;
+    selection-background-color: #254b6a; selection-color: #ffffff;
+}
+QWidget#activityTab QTableWidget#activityOperations:focus { border-color: #90cdf4; }
 QWidget#activityTab QProgressBar {
     background: #1a202c; border: 1px solid #384658; border-radius: 5px;
     color: #edf2f7; text-align: center; min-height: 16px;
