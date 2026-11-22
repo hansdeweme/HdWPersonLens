@@ -32,6 +32,7 @@ from .person_kb_collection import PersonKBCollectionPanel
 from .person_kb_identity import PersonKBIdentityPanel
 from .person_kb_recommendations import PersonKBRecommendationPanel
 from .person_kb_assessment_workflow import PersonKBAssessmentWorkflow
+from .person_kb_encoding_impact import PersonKBEncodingImpactPanel
 from .person_kb_curation import PersonKBCurationPanel
 from .personlens_theme import apply_workbench_theme, initial_split_sizes
 from .person_db_gui import SchemaForm, load_schema
@@ -355,6 +356,8 @@ class PersonsWorkbench(QWidget):
         self.recommendations = PersonKBRecommendationPanel(self.settings, self,
                                                            source_getter=self.person_service.get_person_image_paths)
         self.curation = PersonKBCurationPanel(self)
+        self.encoding_impact = PersonKBEncodingImpactPanel(self.person_service, self)
+        self.encoding_impact.recommendations = self.recommendations
         self.recommendations._decision_getter = self.curation.current_decisions
         self.curation.decision_changed.connect(self.recommendations.review_decisions_changed)
         for title, panel in (("Collection quality", self.collection), ("Identity consistency", self.identity),
@@ -369,14 +372,17 @@ class PersonsWorkbench(QWidget):
         self.collection.assessment_ready.connect(self.curation.set_collection)
         self.identity.assessment_ready.connect(self.curation.set_identity)
         self.recommendations.shortlist_ready.connect(self.curation.set_shortlist)
+        self.recommendations.shortlist_ready.connect(self.encoding_impact.set_shortlist)
         for panel in (self.collection, self.identity, self.recommendations):
             panel.image_requested.connect(self._navigate_assessment_image)
         self.curation.image_requested.connect(self._navigate_assessment_image)
+        self.encoding_impact.image_requested.connect(self._navigate_assessment_image)
         self.collection.assessment_invalidated.connect(self.recommendations.invalidate_collection)
         self.identity.assessment_invalidated.connect(self.recommendations.invalidate_identity)
         self.collection.assessment_invalidated.connect(self.curation.invalidate_collection)
         self.identity.assessment_invalidated.connect(self.curation.invalidate_identity)
         self.recommendations.shortlist_invalidated.connect(self.curation.invalidate_shortlist)
+        self.recommendations.shortlist_invalidated.connect(self.encoding_impact.invalidate)
         self.recommendations.sources_stale.connect(self.curation.invalidate_collection)
         self.assessment_flow = PersonKBAssessmentWorkflow(
             self.collection, self.identity, self.recommendations, self,
@@ -391,6 +397,10 @@ class PersonsWorkbench(QWidget):
         review_layout = QVBoxLayout(review_group)
         review_layout.addWidget(self.curation)
         assessment_layout.addWidget(review_group)
+        impact_group = QGroupBox("Encoding impact preview · read-only")
+        impact_layout = QVBoxLayout(impact_group)
+        impact_layout.addWidget(self.encoding_impact)
+        assessment_layout.addWidget(impact_group)
         assessment_layout.addStretch()
         self.detail_tabs.addTab(self._scroll_section(assessment), "KB Assessment")
         self.detail_tabs.currentChanged.connect(self._on_detail_tab_changed)
@@ -701,6 +711,7 @@ class PersonsWorkbench(QWidget):
         for path, label in self.fields.items(): label.setText(_display_value(_value_at(record, path), path) or "—")
         kb_paths = self.person_service.get_person_image_paths(name)
         self.curation.set_person(name, kb_paths)
+        self.encoding_impact.set_person(name, kb_paths)
         self.assessment_flow.set_person(name, kb_paths)
         self.recommendations.set_person(name, kb_paths)
         self._set_gallery_person(name, kb_paths, self.portrait_service.preferred_image(name))
@@ -715,6 +726,7 @@ class PersonsWorkbench(QWidget):
         self._profile_name = None
         self.assessment_flow.set_person("", [])
         self.curation.set_person("", [])
+        self.encoding_impact.set_person("", [])
         self.recommendations.set_person("", [])
         self.name_label.setText("Select a person")
         self.portrait.clear()
@@ -732,6 +744,7 @@ class PersonsWorkbench(QWidget):
         name = self._current_person_name()
         paths = self.person_service.get_person_image_paths(name) if name else []
         self.curation.set_person(name, paths)
+        self.encoding_impact.set_person(name, paths)
         self.recommendations.set_person(name, paths)
         self.collection.set_person(name, paths)
         self.identity.set_person(name, paths)
