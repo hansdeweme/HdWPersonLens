@@ -32,6 +32,7 @@ from .person_kb_collection import PersonKBCollectionPanel
 from .person_kb_identity import PersonKBIdentityPanel
 from .person_kb_recommendations import PersonKBRecommendationPanel
 from .person_kb_assessment_workflow import PersonKBAssessmentWorkflow
+from .person_kb_curation import PersonKBCurationPanel
 from .personlens_theme import apply_workbench_theme, initial_split_sizes
 from .person_db_gui import SchemaForm, load_schema
 from .person_profile_merge import merge_profile
@@ -353,6 +354,7 @@ class PersonsWorkbench(QWidget):
         self.identity = PersonKBIdentityPanel(self.settings, self)
         self.recommendations = PersonKBRecommendationPanel(self.settings, self,
                                                            source_getter=self.person_service.get_person_image_paths)
+        self.curation = PersonKBCurationPanel(self)
         for title, panel in (("Collection quality", self.collection), ("Identity consistency", self.identity),
                              ("Reference shortlist", self.recommendations)):
             group = QGroupBox(title)
@@ -362,10 +364,18 @@ class PersonsWorkbench(QWidget):
             assessment_layout.addWidget(group)
         self.collection.assessment_ready.connect(self.recommendations.set_collection)
         self.identity.assessment_ready.connect(self.recommendations.set_identity)
+        self.collection.assessment_ready.connect(self.curation.set_collection)
+        self.identity.assessment_ready.connect(self.curation.set_identity)
+        self.recommendations.shortlist_ready.connect(self.curation.set_shortlist)
         for panel in (self.collection, self.identity, self.recommendations):
             panel.image_requested.connect(self._navigate_assessment_image)
+        self.curation.image_requested.connect(self._navigate_assessment_image)
         self.collection.assessment_invalidated.connect(self.recommendations.invalidate_collection)
         self.identity.assessment_invalidated.connect(self.recommendations.invalidate_identity)
+        self.collection.assessment_invalidated.connect(self.curation.invalidate_collection)
+        self.identity.assessment_invalidated.connect(self.curation.invalidate_identity)
+        self.recommendations.shortlist_invalidated.connect(self.curation.invalidate_shortlist)
+        self.recommendations.sources_stale.connect(self.curation.invalidate_collection)
         self.assessment_flow = PersonKBAssessmentWorkflow(
             self.collection, self.identity, self.recommendations, self,
             prepare_collection=self._prepare_assessment_sources,
@@ -375,6 +385,10 @@ class PersonsWorkbench(QWidget):
         assessment_hint.setObjectName("assessmentHint")
         assessment_hint.setWordWrap(True)
         assessment_layout.insertWidget(1, assessment_hint)
+        review_group = QGroupBox("Guided image review · advisory")
+        review_layout = QVBoxLayout(review_group)
+        review_layout.addWidget(self.curation)
+        assessment_layout.addWidget(review_group)
         assessment_layout.addStretch()
         self.detail_tabs.addTab(self._scroll_section(assessment), "KB Assessment")
         self.detail_tabs.currentChanged.connect(self._on_detail_tab_changed)
@@ -684,6 +698,7 @@ class PersonsWorkbench(QWidget):
             self._request_portrait(name)
         for path, label in self.fields.items(): label.setText(_display_value(_value_at(record, path), path) or "—")
         kb_paths = self.person_service.get_person_image_paths(name)
+        self.curation.set_person(name, kb_paths)
         self.assessment_flow.set_person(name, kb_paths)
         self.recommendations.set_person(name, kb_paths)
         self._set_gallery_person(name, kb_paths, self.portrait_service.preferred_image(name))
@@ -697,6 +712,7 @@ class PersonsWorkbench(QWidget):
         self._set_profile_editing(False)
         self._profile_name = None
         self.assessment_flow.set_person("", [])
+        self.curation.set_person("", [])
         self.recommendations.set_person("", [])
         self.name_label.setText("Select a person")
         self.portrait.clear()
@@ -713,6 +729,7 @@ class PersonsWorkbench(QWidget):
             return []
         name = self._current_person_name()
         paths = self.person_service.get_person_image_paths(name) if name else []
+        self.curation.set_person(name, paths)
         self.recommendations.set_person(name, paths)
         self.collection.set_person(name, paths)
         self.identity.set_person(name, paths)
