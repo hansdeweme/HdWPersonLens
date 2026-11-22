@@ -38,8 +38,26 @@ def evidence_rows(paths, collection=None, identity=None, shortlist=None):
         if f.get("face_count") == 0 and path in faces: findings.append("No face")
         if (f.get("face_count") or 0) > 1: findings.append("Multiple faces")
         if s.get("recommendation") == "shortlist": findings.append("Provisional shortlist")
-        rows.append({"path": path, "findings": findings, "score": s.get("score"), "signature": file_signature(path)})
+        attention = any(finding != "Provisional shortlist" for finding in findings)
+        rows.append({"path": path, "findings": findings, "attention": attention,
+                     "score": s.get("score"), "signature": file_signature(path)})
     return rows
+
+
+def review_state(decision, current):
+    if decision is None: return "unreviewed"
+    return decision if current else "stale"
+
+
+def matches_review_filters(state, findings, attention, decision_filter="all", finding_filter="all"):
+    """Pure filter policy; filenames never influence finding severity."""
+    if decision_filter == "attention": decision_match = state in ("unreviewed", "stale")
+    else: decision_match = decision_filter == "all" or state == decision_filter
+    if finding_filter == "warnings": finding_match = attention
+    elif finding_filter == "shortlist": finding_match = "Provisional shortlist" in findings
+    elif finding_filter == "none": finding_match = not findings
+    else: finding_match = finding_filter == "all"
+    return decision_match and finding_match
 
 
 class ReviewDecisionStore:

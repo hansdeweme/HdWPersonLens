@@ -4,9 +4,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from PyQt6.QtCore import QStandardPaths, Qt, pyqtSignal
-from PyQt6.QtWidgets import QHBoxLayout, QLabel, QMessageBox, QPushButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import (QComboBox, QHBoxLayout, QLabel, QMessageBox, QProgressBar, QPushButton,
+                             QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget)
 
-from .kb_curation_review import ReviewDecisionStore, evidence_rows
+from .kb_curation_review import ReviewDecisionStore, evidence_rows, matches_review_filters, review_state
 from .kb_reference_recommendations import source_snapshot
 
 
@@ -25,6 +26,28 @@ class PersonKBCurationPanel(QWidget):
         self.summary = QLabel("Select a person to review KB images · advisory decisions only")
         self.summary.setWordWrap(True)
         layout.addWidget(self.summary)
+        self.progress = QProgressBar()
+        self.progress.setRange(0, 100)
+        self.progress.setValue(0)
+        self.progress.setAccessibleName("KB image review progress")
+        layout.addWidget(self.progress)
+        filters = QHBoxLayout()
+        self.decision_filter = QComboBox()
+        self.decision_filter.setAccessibleName("Filter by review decision")
+        for label, value in (("All decisions", "all"), ("Needs attention", "attention"), ("Unreviewed", "unreviewed"),
+                             ("Keep", "keep"), ("Review Later", "later"), ("Exclude", "exclude"), ("Needs re-review", "stale")):
+            self.decision_filter.addItem(label, value)
+        self.finding_filter = QComboBox()
+        self.finding_filter.setAccessibleName("Filter by assessment finding")
+        for label, value in (("All findings", "all"), ("Warnings / errors", "warnings"),
+                             ("Provisional shortlist", "shortlist"), ("No findings", "none")):
+            self.finding_filter.addItem(label, value)
+        for selector in (self.decision_filter, self.finding_filter):
+            selector.currentIndexChanged.connect(self._apply_filters)
+            filters.addWidget(selector)
+        self.visible_count = QLabel("0 shown")
+        filters.addWidget(self.visible_count)
+        layout.addLayout(filters)
         self.list = QTreeWidget()
         self.list.setHeaderLabels(["KB image", "Assessment findings", "Decision"])
         self.list.setMinimumHeight(180)
@@ -113,6 +136,22 @@ class PersonKBCurationPanel(QWidget):
         self.inspect_button.setEnabled(selected)
         for button in self.buttons.values(): button.setEnabled(selected)
 
+    def _apply_filters(self, *_args):
+        decision = self.decision_filter.currentData()
+        finding = self.finding_filter.currentData()
+        visible = 0
+        for index in range(self.list.topLevelItemCount()):
+            item = self.list.topLevelItem(index)
+            state = item.data(0, int(Qt.ItemDataRole.UserRole) + 2)
+            findings = item.data(0, int(Qt.ItemDataRole.UserRole) + 3)
+            attention = item.data(0, int(Qt.ItemDataRole.UserRole) + 4)
+            shown = matches_review_filters(state, findings, attention, decision, finding)
+            item.setHidden(not shown)
+            if shown: visible += 1
+            elif item.isSelected(): item.setSelected(False)
+        self.visible_count.setText(f"{visible} / {self.list.topLevelItemCount()} shown")
+        self._update_buttons()
+
     def _render(self, select=None):
         select = select or self._selected()
         current = source_snapshot(self.paths)
@@ -124,16 +163,21 @@ class PersonKBCurationPanel(QWidget):
         reviewed, stale = 0, 0
         for row in rows:
             decision, current = self.store.get(self.person, row["path"], row["signature"])
-            if decision and current: reviewed += 1
-            if decision and not current: stale += 1
+            state = review_state(decision, current)
+            if state in ("keep", "later", "exclude"): reviewed += 1
+            if state == "stale": stale += 1
             label = (decision.replace("exclude", "excluded").title() if current else "Needs re-review") if decision else "Unreviewed"
             item = QTreeWidgetItem([Path(row["path"]).name, ", ".join(row["findings"]) or "No finding yet", label])
             item.setData(0, Qt.ItemDataRole.UserRole, row["path"])
             item.setData(0, int(Qt.ItemDataRole.UserRole) + 1, row["signature"])
+            item.setData(0, int(Qt.ItemDataRole.UserRole) + 2, state)
+            item.setData(0, int(Qt.ItemDataRole.UserRole) + 3, row["findings"])
+            item.setData(0, int(Qt.ItemDataRole.UserRole) + 4, row["attention"])
             item.setToolTip(0, row["path"])
             self.list.addTopLevelItem(item)
             if row["path"] == select: self.list.setCurrentItem(item)
         ready = sum(r is not None for r in (*reports, shortlist))
-        self.summary.setText(f"{reviewed}/{len(rows)} reviewed · {stale} require re-review · {ready}/3 evidence stages ready · "
+        self.progress.setValue(round(100 * reviewed / len(rows)) if rows else 0)
+        self.summary.setText(f"{reviewed}/{len(rows)} current decisions · {stale} require re-review · {ready}/3 evidence stages ready · "
                              "decisions are advisory; images, preferences and recognition caches are unchanged")
-        self._update_buttons()
+        self._apply_filters()

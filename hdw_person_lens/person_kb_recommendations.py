@@ -113,7 +113,7 @@ class PersonKBRecommendationPanel(QWidget):
         compare.addLayout(diversity_col, 1)
         layout.addLayout(compare)
         self.results = QTreeWidget()
-        self.results.setHeaderLabels(["Image", "Tech score", "Novelty", "Proposal", "Why"])
+        self.results.setHeaderLabels(["Image", "Tech score", "Novelty", "Proposal", "Review", "Why"])
         self.results.setMinimumHeight(140)
         self.results.setMaximumHeight(240)
         self.results.itemDoubleClicked.connect(lambda item, _column: self.image_requested.emit(item.data(0, Qt.ItemDataRole.UserRole)))
@@ -255,7 +255,10 @@ class PersonKBRecommendationPanel(QWidget):
         comparison = "automatic diversity" if review_aware else "quality-only"
         self.quality_heading.setText("Automatic diversity shortlist" if review_aware else "Quality-only baseline")
         self.diversity_heading.setText("Review-aware shortlist · provisional" if review_aware else "Diversity-aware shortlist · provisional")
-        self.summary.setText(f"{result['shortlisted']} proposed · {changed} differ from {comparison} · {mode} · {result['reason']}")
+        promoted = sum(r["recommendation"] == "shortlist" and r["review_decision"] == "keep" for r in result["rows"])
+        blocked = sum(r["review_decision"] == "keep" and r["recommendation"] != "shortlist" for r in result["rows"])
+        effects = f" · {promoted} kept in shortlist, {blocked} Keep outside shortlist" if review_aware else ""
+        self.summary.setText(f"{result['shortlisted']} proposed · {changed} differ from {comparison} · {mode}{effects} · {result['reason']}")
         self._built = True
         self.weight_slider.setEnabled(True)
         self._fill_cards(self.quality_cards, baseline["rows"], set())
@@ -263,8 +266,9 @@ class PersonKBRecommendationPanel(QWidget):
         self.results.clear()
         for row in result["rows"]:
             novelty = f"{row['novelty']:.2f}" if row["novelty"] is not None else "—"
+            review = row["review_decision"].title() if review_aware and row["review_decision"] else "—"
             item = QTreeWidgetItem([Path(row["path"]).name, f"{row['score']:.3f}", novelty,
-                                    row["recommendation"].title(), row["reason"]])
+                                    row["recommendation"].title(), review, row["reason"]])
             item.setToolTip(0, row["path"])
             item.setData(0, Qt.ItemDataRole.UserRole, row["path"])
             item.setForeground(3, QBrush(QColor(FINDING_COLORS[finding_tone(row["recommendation"])])))
