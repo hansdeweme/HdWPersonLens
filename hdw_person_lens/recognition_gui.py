@@ -38,6 +38,7 @@ from .browse_persons          import QueryPersonsDialog
 from .recognition_gui_dialogs import AboutDialog, SettingsDialog, KBStatsDialog, SimilarPersonsDialog, FusedCompareDialog, IdentifyResultDialog, MediaFoldersReportDialog
 from .person_db_gui           import PersonDbEditorWidget
 from .persons_workbench       import PersonsWorkbench
+from .person_context          import PersonContext
 from .person_service          import PersonService, ReencodeBatchResult
 from .knowledge_workers       import ReencodePersonsWorker
 from .kb_gallery_dialog       import KBGalleryOptimizerDialog
@@ -276,16 +277,36 @@ class MainWindow(QMainWindow):
         self.persons_workbench.portrait_error.connect(self.display_message)
         self.persons_workbench.person_action_requested.connect(self._on_workbench_person_action)
         self.main_tabs.addTab(self.persons_workbench, "Persons Workbench")
+        self.person_context = PersonContext()
+        self.person_db_editor.person_selected.connect(self._on_active_person_selected)
+        self.persons_workbench.person_selected.connect(self._on_active_person_selected)
+        self.main_tabs.currentChanged.connect(self._sync_active_person_tab)
         self.setCentralWidget(self.main_tabs)
         from .personlens_theme import apply_main_navigation_theme
         apply_main_navigation_theme(self, self.main_tabs)
 
+    def _on_active_person_selected(self, name: str) -> None:
+        self.person_context.select(name)
+
+    def _sync_active_person_tab(self, _index: int) -> None:
+        name = self.person_context.name
+        if not name: return
+        if self.person_db.get_by_name(name) is None:
+            self.person_context.select("")
+            if self.main_tabs.currentWidget() is self.persons_workbench: self.persons_workbench.refresh()
+            return
+        current = self.main_tabs.currentWidget()
+        if current is self.person_db_editor: self.person_db_editor.select_person(name)
+        elif current is self.persons_workbench: self.persons_workbench.select_person(name)
+
     def _on_person_record_saved(self, person_name: str, ) -> None:
+        self.person_context.select(person_name)
         self.display_message(f"[Persons DB] Saved record: " f"{person_name}")
         if hasattr(self, "persons_workbench"):
-            self.persons_workbench.refresh()
+            self.persons_workbench.refresh(select_name=person_name)
 
     def _on_person_record_deleted(self, person_name: str, ) -> None:
+        if self.person_context.name == person_name: self.person_context.select("")
         self.display_message(f"[Persons DB] Deleted record: " f"{person_name}" )
         if hasattr(self, "persons_workbench"):
             self.persons_workbench.refresh()
@@ -1521,6 +1542,7 @@ class MainWindow(QMainWindow):
         self._show_remove_person_dialog(name)
         
     def _on_person_added(self, result) -> None:
+        self.person_context.select(result.name)
         self.display_message(
             f"[PersonService] Added {result.name}: "
             f"{result.face_encodings} face and "
@@ -1532,12 +1554,14 @@ class MainWindow(QMainWindow):
             self.persons_workbench.refresh(select_name=result.name)
 
     def _on_person_renamed(self, old_name: str, new_name: str, ) -> None:
+        if self.person_context.name == old_name: self.person_context.select(new_name)
         self.display_message(f"[PersonService] Renamed "f"{old_name} → {new_name}" )
         self.person_db_editor.refresh_from_database(force=True) 
         if hasattr(self, "persons_workbench"):
             self.persons_workbench.refresh(select_name=new_name)
 
     def _on_person_removed(self, person_name: str, ) -> None:
+        if self.person_context.name == person_name: self.person_context.select("")
         self.display_message(f"[PersonService] Removed person: " f"{person_name}")
         self.person_db_editor.refresh_from_database(force=True)
         if hasattr(self, "persons_workbench"):

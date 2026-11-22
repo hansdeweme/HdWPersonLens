@@ -535,6 +535,20 @@ class PersonsWorkbench(QWidget):
         index = self.table.currentIndex()
         return self.proxy.data(index, PersonRosterModel.NAME_ROLE) if index.isValid() else ""
 
+    def select_person(self, name: str) -> bool:
+        """Select an exact roster identity; never substitute the first visible row."""
+        if not name: return False
+        source_row = next((row for row, record in enumerate(self.model.records) if record.get("personName") == name), None)
+        if source_row is None: return False
+        if self._current_person_name() == name: return True
+        target = self.proxy.mapFromSource(self.model.index(source_row, 1))
+        if not target.isValid():
+            self.search.clear()
+            target = self.proxy.mapFromSource(self.model.index(source_row, 1))
+        if not target.isValid(): return False
+        self.table.selectRow(target.row())
+        return self._current_person_name() == name
+
     def _choose_preferred_portrait(self):
         name = self._current_person_name()
         if not name: return

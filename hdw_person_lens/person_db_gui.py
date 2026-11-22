@@ -24,7 +24,7 @@ from   jsonschema      import Draft202012Validator, ValidationError
 from   typing          import Any, Dict, List, Tuple, Callable, Optional
 from   PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QFormLayout, QVBoxLayout, QHBoxLayout, QGridLayout, QGroupBox, QScrollArea, QLineEdit, QComboBox, QDoubleSpinBox
 from   PyQt6.QtWidgets import QSpinBox, QCheckBox, QPushButton, QLabel, QFileDialog, QMessageBox, QListWidget, QListWidgetItem, QSplitter
-from   PyQt6.QtCore    import Qt, QRegularExpression, QTimer, pyqtSignal
+from   PyQt6.QtCore    import Qt, QRegularExpression, QSignalBlocker, QTimer, pyqtSignal
 from   PyQt6.QtGui     import QKeySequence, QRegularExpressionValidator, QShortcut
 # local imports
 from .person_db         import PersonDB
@@ -354,6 +354,7 @@ class SchemaForm(QWidget):
 
 # --------------------------- Main Window ---------------------------
 class PersonDbEditorWidget(QWidget):
+    person_selected = pyqtSignal(str)
     record_saved = pyqtSignal(str)
     record_deleted = pyqtSignal(str)
     database_reloaded = pyqtSignal()
@@ -371,6 +372,7 @@ class PersonDbEditorWidget(QWidget):
         self.validator = Draft202012Validator(self.schema)
         self.person_db = person_db
         self.current_key: str | None = None
+        self._selection_baseline = None
         self.create_UI()
         apply_person_db_theme(self)
         # These must run only after every referenced widget exists.
@@ -518,12 +520,14 @@ class PersonDbEditorWidget(QWidget):
         rec = self.person_db.get_by_name(key)
         if rec is None:
             self._err(f"Record '{key}' not found.")
-            return
+            return False
         self.form_widget.clear_values()
         self.form_widget.populate(rec)
         self.current_key = key
+        self._selection_baseline = self.form_widget.collect_data()
         self.status.setText(f"Loaded: {key}")
         self.status.setStyleSheet("color: #90cdf4;")
+        return True
 
     def _guard_name_change(self, old_name: str, new_name: str) -> bool:
         if not old_name or old_name == new_name or self.person_service is None:
@@ -609,16 +613,41 @@ class PersonDbEditorWidget(QWidget):
     # -------------------- Slots --------------------
     def on_select(self):
         key = self._selected_key()
-        if key:
-            self.load_record_into_form(key)
+        if key and self.load_record_into_form(key):
+            self.person_selected.emit(key)
 
     def on_new(self) -> None:
         self.list_widget.clearSelection()
         self.form_widget.clear_values()
         self.current_key = None
         self.form_widget.populate({"#person_id": create_person_id()})
+        self._selection_baseline = self.form_widget.collect_data()
         self.status.setText("New record…")
         self.status.setStyleSheet("color: #90cdf4;")
+
+    def has_unsaved_changes(self) -> bool:
+        return self._selection_baseline is not None and self.form_widget.collect_data() != self._selection_baseline
+
+    def select_person(self, name: str) -> bool:
+        """Load one exact DB person; preserve unsaved form values and reject missing names."""
+        if not name or self.person_db.get_by_name(name) is None: return False
+        same_person = self.current_key == name
+        if not same_person and self.has_unsaved_changes():
+            self.status.setText("Unsaved edits retained; save or discard them before switching persons.")
+            self.status.setStyleSheet("color: #fbd38d;")
+            return False
+        if self.search_box.text(): self.search_box.clear()
+        for row in range(self.list_widget.count()):
+            item = self.list_widget.item(row)
+            if item.data(Qt.ItemDataRole.UserRole) == name:
+                if same_person:
+                    # Restore the row highlight without reloading an edited form.
+                    with QSignalBlocker(self.list_widget):
+                        self.list_widget.setCurrentItem(item)
+                else:
+                    self.list_widget.setCurrentItem(item)
+                return self.current_key == name and self._selected_key() == name
+        return False
 
     def on_duplicate(self):
         # Grab current data, clear personName to force new
@@ -689,6 +718,7 @@ class PersonDbEditorWidget(QWidget):
         self.refresh_list()
         new_key = str(doc.get("personName", "")).strip()
         self.current_key = new_key or None
+        self._selection_baseline = self.form_widget.collect_data()
         # reselect the saved item
         if self.current_key:
             matches = self.list_widget.findItems(self.current_key, Qt.MatchFlag.MatchStartsWith)
