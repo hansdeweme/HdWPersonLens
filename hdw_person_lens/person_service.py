@@ -851,6 +851,23 @@ class PersonService:
         body_count = sum(value == name for value in persons.get("body_names", []))
         return face_count, body_count
 
+    def get_reference_provenance(self, name: str) -> dict:
+        """Return one consistent, defensive bank snapshot without waiting for an encoding transaction."""
+        name = self._clean_name(name)
+        manager = self.knowledge_manager
+        if not manager._bank_lock.acquire(blocking=False):
+            raise PersonServiceError("Encoding bank is busy; refresh provenance after the operation finishes.")
+        try:
+            bank = manager.persons
+            metadata = bank.get("metadata") or {}
+            provenance = metadata.get("reference_provenance") or {}
+            records = copy.deepcopy(provenance[name]) if name in provenance else None
+            return {"name": name, "folder": str(self._kb_folder(name)), "records": records,
+                    "face_count": sum(label == name for label in bank.get("face_names", [])),
+                    "body_count": sum(label == name for label in bank.get("body_names", []))}
+        finally:
+            manager._bank_lock.release()
+
     def _snapshot_person_encodings(self, name: str) -> dict[str, Any]:
         persons = self.knowledge_manager.persons
         snapshot: dict[str, Any] = {}

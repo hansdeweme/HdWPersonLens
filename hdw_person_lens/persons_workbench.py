@@ -33,6 +33,7 @@ from .person_kb_identity import PersonKBIdentityPanel
 from .person_kb_recommendations import PersonKBRecommendationPanel
 from .person_kb_assessment_workflow import PersonKBAssessmentWorkflow
 from .person_kb_encoding_impact import PersonKBEncodingImpactPanel
+from .person_kb_provenance import PersonKBProvenancePanel
 from .person_kb_curation import PersonKBCurationPanel
 from .personlens_theme import apply_workbench_theme, initial_split_sizes
 from .person_db_gui import SchemaForm, load_schema
@@ -358,6 +359,8 @@ class PersonsWorkbench(QWidget):
                                                            source_getter=self.person_service.get_person_image_paths)
         self.curation = PersonKBCurationPanel(self)
         self.encoding_impact = PersonKBEncodingImpactPanel(self.person_service, self)
+        self.provenance = PersonKBProvenancePanel(self.person_service, self)
+        self._provenance_pending = False
         self.encoding_impact.recommendations = self.recommendations
         self.recommendations._decision_getter = self.curation.current_decisions
         self.curation.decision_changed.connect(self.recommendations.review_decisions_changed)
@@ -378,6 +381,7 @@ class PersonsWorkbench(QWidget):
             panel.image_requested.connect(self._navigate_assessment_image)
         self.curation.image_requested.connect(self._navigate_assessment_image)
         self.encoding_impact.image_requested.connect(self._navigate_assessment_image)
+        self.provenance.image_requested.connect(self._navigate_assessment_image)
         self.encoding_impact.activity_message.connect(self.encoding_activity)
         self.encoding_impact.encoding_completed.connect(self._selected_encoding_completed)
         self.collection.assessment_invalidated.connect(self.recommendations.invalidate_collection)
@@ -404,6 +408,10 @@ class PersonsWorkbench(QWidget):
         impact_layout = QVBoxLayout(impact_group)
         impact_layout.addWidget(self.encoding_impact)
         assessment_layout.addWidget(impact_group)
+        provenance_group = QGroupBox("Saved encoding provenance · read-only")
+        provenance_layout = QVBoxLayout(provenance_group)
+        provenance_layout.addWidget(self.provenance)
+        assessment_layout.addWidget(provenance_group)
         assessment_layout.addStretch()
         self.detail_tabs.addTab(self._scroll_section(assessment), "KB Assessment")
         self.detail_tabs.currentChanged.connect(self._on_detail_tab_changed)
@@ -429,6 +437,14 @@ class PersonsWorkbench(QWidget):
     def _on_detail_tab_changed(self, index):
         if index == 1:
             QTimer.singleShot(0, self._load_pending_gallery)
+        if index == 2:
+            QTimer.singleShot(0, self._load_pending_provenance)
+
+    def _load_pending_provenance(self):
+        if (self._portrait_stopping or not self._provenance_pending or not self.isVisible()
+                or self.detail_tabs.currentIndex() != 2 or not self.provenance.isVisible()): return
+        self._provenance_pending = False
+        self.provenance.refresh()
 
     def _load_pending_gallery(self):
         # Parent show events can precede child visibility; callers defer until
@@ -469,6 +485,7 @@ class PersonsWorkbench(QWidget):
         super().showEvent(event)
         if not self._initial_split_applied: QTimer.singleShot(0, self._apply_initial_split)
         QTimer.singleShot(0, self._load_pending_gallery)
+        QTimer.singleShot(0, self._load_pending_provenance)
         self._schedule_visible_portraits()
         self._request_portrait(self._current_person_name())
 
@@ -521,6 +538,7 @@ class PersonsWorkbench(QWidget):
         self._portrait_stopping = True
         self._portrait_generation += 1
         self.encoding_impact.shutdown()
+        self.provenance.shutdown()
         self.recommendations.shutdown()
         self.identity.shutdown()
         self.collection.shutdown()
@@ -535,6 +553,8 @@ class PersonsWorkbench(QWidget):
         if self._portrait_stopping or name != self._current_person_name(): return
         self.kb_status.setText(f"KB: {len(self.person_service.get_person_image_paths(name))} image(s) · "
             f"Controlled encoding: {result.face_encodings} face / {result.body_encodings} body embeddings")
+        self._provenance_pending = True
+        QTimer.singleShot(0, self._load_pending_provenance)
 
     def _portrait_ready(self, name, generation, data):
         self._portrait_pending.pop((generation, name), None)
@@ -721,6 +741,9 @@ class PersonsWorkbench(QWidget):
         kb_paths = self.person_service.get_person_image_paths(name)
         self.curation.set_person(name, kb_paths)
         self.encoding_impact.set_person(name, kb_paths)
+        self.provenance.set_person(name)
+        self._provenance_pending = True
+        QTimer.singleShot(0, self._load_pending_provenance)
         self.assessment_flow.set_person(name, kb_paths)
         self.recommendations.set_person(name, kb_paths)
         self._set_gallery_person(name, kb_paths, self.portrait_service.preferred_image(name))
@@ -736,6 +759,8 @@ class PersonsWorkbench(QWidget):
         self.assessment_flow.set_person("", [])
         self.curation.set_person("", [])
         self.encoding_impact.set_person("", [])
+        self.provenance.set_person("")
+        self._provenance_pending = False
         self.recommendations.set_person("", [])
         self.name_label.setText("Select a person")
         self.portrait.clear()
@@ -754,6 +779,9 @@ class PersonsWorkbench(QWidget):
         paths = self.person_service.get_person_image_paths(name) if name else []
         self.curation.set_person(name, paths)
         self.encoding_impact.set_person(name, paths)
+        self.provenance.set_person(name)
+        self._provenance_pending = bool(name)
+        QTimer.singleShot(0, self._load_pending_provenance)
         self.recommendations.set_person(name, paths)
         self.collection.set_person(name, paths)
         self.identity.set_person(name, paths)
