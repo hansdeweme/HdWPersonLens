@@ -59,13 +59,22 @@
 -            if name != selected or name != self.person_context.name or self.person_db.get_by_name(name) is None:
 +            state = self.person_service.get_person_state(name)
 +            if (name != selected or name != self.person_context.name or
-+                    not (state.database_record_exists or (action in ("rename", "remove") and state.has_recognition_state))):
++                    not (state.database_record_exists or state.has_recognition_state)):
                  QMessageBox.warning(self, ACTION_LABELS[action], "The active person changed or is no longer available. Refresh the Workbench and retry.")
                  return
 -            state = self.person_service.get_person_state(name)
              allowed, reason = person_action_allowed(action, name, state)
              if not allowed:
                  QMessageBox.warning(self, ACTION_LABELS[action], reason)
+@@ -1689,7 +1702,7 @@
+         selected = self.persons_workbench._current_person_name()
+         state = self.person_service.get_person_state(name)
+         allowed, reason = person_action_allowed("reencode", name, state)
+-        if (selected != name or self.person_context.name != name or self.person_db.get_by_name(name) is None or
++        if (selected != name or self.person_context.name != name or not state.has_recognition_state or
+                 self.persons_workbench.reencode_panel.person_name != name or not allowed):
+             QMessageBox.warning(self, "Re-encode", reason or "The active person changed. Review the request again.")
+             return
 --- a/hdw_person_lens/person_service.py
 +++ b/hdw_person_lens/person_service.py
 @@ -31,6 +31,9 @@

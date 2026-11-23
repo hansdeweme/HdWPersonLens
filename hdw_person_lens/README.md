@@ -1,40 +1,31 @@
-# PersonLens v1.9.8 — Native KB-Only Rename & Remove (integration preview)
+# PersonLens v1.9.9 ? KB-Only Image Management & Re-encoding
 
-This is the next v1.9.7 management-parity slice. It enables Workbench-native **Rename** and **Remove** for recognition-only people without creating Persons DB rows. It does not enable KB-only Edit Images or Re-encode and does not retire any legacy tools.
+This cumulative integration package enables native Rename, Remove, Edit Images and conventional Re-encode for recognition-only profiles without creating Persons DB records. Empty KB folders permit image additions; re-encoding requires current KB images. Profile editing still requires a real DB record.
 
 ## Apply safely
 
-Only **five targeted unified patches** are provided alongside this README, plus a focused test. There are no full replacement `recognition_gui.py` or `persons_workbench.py` files in the deliverable.
+These patches target the current checkout with v1.9.8 application patches still unapplied. From the repository root, check the complete set before applying:
 
-After extracting into a separate folder, from your project's root (the parent of `hdw_person_lens`) check each patch using `git apply --check <path-to-patch>`, then apply it with `git apply <path-to-patch>`. If a check fails because your current source differs, merge that patch manually and retain all existing changes. **Do not reset, overwrite or replace current source files.**
+```powershell
+git apply --check hdw_person_lens/policy.patch hdw_person_lens/rename.patch hdw_person_lens/remove.patch hdw_person_lens/images.patch hdw_person_lens/dispatch.patch hdw_person_lens/reencode_panel.patch hdw_person_lens/workbench_guidance.patch
+```
 
-Suggested order: `policy.patch`, `rename.patch`, `remove.patch`, `workbench.patch`, `dispatch.patch`.
+Apply the same set using `git apply` after checks pass. Do not also apply the older `workbench.patch`: `workbench_guidance.patch` includes its signal changes. If v1.9.8 is already applied, these cumulative patches require manual merging; do not overwrite or reset application sources.
 
-## Behavior
+`dispatch.patch` retains the v1.9.8 Rename/Remove dispatch and private confirmation-evidence helper. Rename/Remove still prohibit external photo-folder operations without a DB record. External photos remain preserved by default.
 
-- Policy permits Rename and Remove when either a real DB record or an actual recognition profile exists. Other KB-only management actions remain disabled.
-- Rename and Remove panels open for genuine KB-only identities. They capture confirmation evidence and recheck it after confirmation and again during main-window dispatch. Evidence includes person state, DB record contents, selected-person embedding values and provenance, folder/file identities, and image paths, sizes and modification times. A busy encoding bank rejects confirmation without waiting.
-- The confirmed selected identity and external photo-folder path are validated at dispatch. Photo-folder rename/deletion controls are disabled when there is no DB record. A forged enabled choice is also rejected at both panel and dispatcher.
-- Workbench Qt signals now pass an immutable confirmed state alongside the existing confirmation inputs.
-- Service calls remain the same `PersonService.rename_person()` and `remove_person()` operations. DB-backed behavior is retained. External photos are preserved by default.
-- `dispatch.patch` also adds a private PersonService evidence helper. The re-encoding worker, source snapshot forwarding, gallery decoder, and saved KB images are unchanged.
-- File revision checks avoid image decoding or image hashing on the GUI thread. Deliberate in-place content edits preserving file identity, size and modification time are not detected; these checks are not SHA-256 source verification.
-- KB-only guidance explicitly identifies Rename and Remove as available.
+## Image-update safeguards
 
-## Local verification
+The editor captures one KB image list, validates it against the displayed membership, and derives confirmation evidence from that same list. It rechecks membership and source revisions after confirmation. The image worker repeats these checks under the service operation lock immediately before calling the existing transactional image-update service.
 
-8 focused policy/structural tests passed; Python syntax compilation passed. These are structural checks; native Qt behavior and transactional execution still require the Windows acceptance checks below.
+Source revisions use paths, sizes and modification times. They are not SHA-256 content verification and cannot detect deliberate edits preserving those values. The service lock coordinates application transactions; it does not prevent external filesystem writes.
 
-## Windows acceptance (disposable KB copy only)
+The conventional re-encoding handler retains confirmed-snapshot forwarding. No re-encoding worker or starter replacement is included. Controlled-reference encoding keeps its separate confirmation and freshness checks.
 
-1. Create a KB-only identity without a Persons DB row, select it, and verify Rename and Remove are enabled; Edit Images/Re-encode still disabled.
-2. Rename the KB-only identity. Verify KB folder and face/body encoding labels move, roster selection updates, and no DB row appears.
-3. Remove another KB-only identity; ensure folder and embeddings disappear, and external photo-folder option is disabled. Confirm cancellation is a no-op.
-4. Change the selected person, source folder, encodings or person type during either confirmation; verify stale state rejects dispatch.
-5. Confirm DB-backed rename/remove still offer photo-folder options, retain canonical rename results and exact-path confirmation protection.
-6. Exercise service failure/rollback on disposable copies, and confirm Activity records failures without losing context.
-7. Run the existing full suite, especially the v1.9.5 **worker snapshot under the service lock**, v1.9.6 preview lifecycle, and v1.9.7 navigation regressions.
+## Verification
 
-## Retirement gates still open
+Run `tests/test_kb_only_images_encoding.py` after integration. These eight focused policy/structural checks replace the older KB-only policy expectations that Edit Images and Re-encode remain disabled. Native Windows transaction and lifecycle behavior still requires acceptance testing.
 
-Full management consolidation still requires KB-only Edit Images and Re-encode parity; comprehensive Persons DB schema editing; legacy browse/query/export parity; and end-to-end verification of transactional rollback and operation progress. Legacy menus/dialogs remain available.
+On a disposable KB copy, verify empty-folder additions, KB-only image changes and re-encoding, rejection of changes during confirmation or while queued, cancellation, transaction rollback, overlapping operation progress, and shutdown cleanup. Confirm DB-backed behavior and controlled-reference encoding remain unchanged.
+
+Legacy commands remain available. This package is not a full management-parity sign-off.
