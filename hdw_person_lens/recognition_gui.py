@@ -40,6 +40,7 @@ from .person_db_gui           import PersonDbEditorWidget
 from .persons_workbench       import PersonsWorkbench
 from .person_context          import PersonContext
 from .person_action_policy    import ACTION_LABELS, person_action_allowed
+from .kb_reference_recommendations import source_snapshot
 from .person_service          import PersonService, ReencodeBatchResult, PersonConflictError, PersonNotFoundError, PersonServiceError
 from .knowledge_workers       import ReencodePersonsWorker
 from .kb_gallery_dialog       import KBGalleryOptimizerDialog
@@ -283,6 +284,7 @@ class MainWindow(QMainWindow):
         self.persons_workbench.person_added.connect(self._on_person_added)
         self.persons_workbench.create_db_record_requested.connect(self._start_person_db_record)
         self.persons_workbench.remove_requested.connect(self._on_workbench_remove_requested)
+        self.persons_workbench.reencode_requested.connect(self._on_workbench_reencode_requested)
         self.main_tabs.addTab(self.persons_workbench, "Persons Workbench")
         self.person_context = PersonContext()
         self.person_db_editor.person_selected.connect(self._on_active_person_selected)
@@ -1677,11 +1679,32 @@ class MainWindow(QMainWindow):
             if not self.persons_workbench.open_image_editor(name):
                 QMessageBox.warning(self, "Edit Images", f"No current recognition profile found for '{name}'.")
         elif action == "reencode":
-            state = self.person_service.get_person_state(name)
-            if not state.has_recognition_state or not state.image_count:
-                QMessageBox.warning(self, "Re-encode", f"No usable KB images found for '{name}'.")
-                return
-            self._start_reencode_worker(names=[name])
+            if not self.persons_workbench.open_reencode(name):
+                QMessageBox.warning(self, "Re-encode", f"No usable current KB images found for '{name}'.")
+
+    def _on_workbench_reencode_requested(self, name: str, confirmed_snapshot: object) -> None:
+        """Preserve the confirmed all-image target while using the existing Activity-aware worker."""
+        selected = self.persons_workbench._current_person_name()
+        state = self.person_service.get_person_state(name)
+        allowed, reason = person_action_allowed("reencode", name, state)
+        if (selected != name or self.person_context.name != name or self.person_db.get_by_name(name) is None or
+                self.persons_workbench.reencode_panel.person_name != name or not allowed):
+            QMessageBox.warning(self, "Re-encode", reason or "The active person changed. Review the request again.")
+            return
+        paths = self.person_service.get_person_image_paths(name)
+        if not paths or source_snapshot(paths) != confirmed_snapshot:
+            QMessageBox.warning(self, "Re-encode", "KB image sources changed since confirmation. Review again.")
+            return
+        thread = self._reencode_thread
+        if thread is not None:
+            try:
+                if thread.isRunning():
+                    QMessageBox.information(self, "Re-encode", "Another conventional re-encoding operation is already running.")
+                    return
+            except RuntimeError: pass
+        self.persons_workbench.reencode_panel.hide()
+        self.display_message(f"[Persons Workbench] All-image re-encoding requested: {name} ({len(paths)} KB image(s)).")
+        self._start_reencode_worker(names=[name], confirmed_snapshot=confirmed_snapshot)
 
     def _on_person_images_updated(self, name: str, added: int, removed: int) -> None:
         self.person_context.select(name)
@@ -1704,7 +1727,7 @@ class MainWindow(QMainWindow):
             self.reset_progress_bar()
             self._start_reencode_worker(names=[name])
 
-    def _start_reencode_worker(self, *, names: Sequence[str] | None = None, all_persons: bool = False,) -> None:
+    def _start_reencode_worker(self, *, names: Sequence[str] | None = None, all_persons: bool = False, confirmed_snapshot=None) -> None:
         thread = self._reencode_thread
         if thread is not None:
             try:
@@ -1722,6 +1745,8 @@ class MainWindow(QMainWindow):
         self._reencode_reported = False
         thread = QThread(self)
         worker = ReencodePersonsWorker(person_service=self.person_service, names=names, all_persons=all_persons,)
+        if confirmed_snapshot is not None:
+            worker.confirmed_snapshot = tuple(tuple(row) for row in confirmed_snapshot)
         self._reencode_thread = thread
         self._reencode_worker = worker
         worker.moveToThread(thread)

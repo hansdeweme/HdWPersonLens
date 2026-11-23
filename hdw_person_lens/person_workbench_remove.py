@@ -70,29 +70,28 @@ class WorkbenchRemovePanel(QGroupBox):
 
     def _review(self):
         name, delete_photos = self.person_name, self.delete_photos.isChecked()
-        expected_photo_path = self.original_photo_path
+        confirmed_path = self.original_photo_path
         record = self.service.get_person_record(name)
-        if record is None or str(record.get("files_path") or "").strip() != expected_photo_path:
+        if record is None or str(record.get("files_path") or "").strip() != confirmed_path:
             QMessageBox.warning(self, "Removal Source Changed", "The record changed. Refresh and review removal again.")
             return
-        if delete_photos and not os.path.isdir(expected_photo_path):
+        if delete_photos and not os.path.isdir(confirmed_path):
             QMessageBox.warning(self, "External Photo Folder Changed", "The external photo folder is unavailable. Review the removal scope again.")
             return
         message = (f"Permanently remove '{name}'?\n\nThis removes:\n• Face and body encodings\n"
                    "• Knowledge-base folder and its images\n• Persons DB record, when present")
-        message += (f"\n\nALSO PERMANENTLY DELETE EXTERNAL PHOTO FOLDER:\n{expected_photo_path}" if delete_photos
+        message += (f"\n\nALSO PERMANENTLY DELETE EXTERNAL PHOTO FOLDER:\n{confirmed_path}" if delete_photos
                     else "\n\nThe external photo collection folder will be preserved.")
         answer = QMessageBox.warning(self, "Confirm Permanent Removal", message,
                                      QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                                      QMessageBox.StandardButton.No)
         if answer != QMessageBox.StandardButton.Yes: return
         record = self.service.get_person_record(name)
-        if (self.person_name != name or self.original_photo_path != expected_photo_path
-                or self.delete_photos.isChecked() != delete_photos or record is None
-                or str(record.get("files_path") or "").strip() != expected_photo_path):
+        if (record is None or str(record.get("files_path") or "").strip() != confirmed_path or
+                self.person_name != name or self.original_photo_path != confirmed_path or self.delete_photos.isChecked() != delete_photos):
             QMessageBox.warning(self, "Removal Source Changed", "The selected record changed during confirmation. Refresh and review again.")
             return
-        if delete_photos and not os.path.isdir(expected_photo_path):
+        if delete_photos and not os.path.isdir(confirmed_path):
             QMessageBox.warning(self, "Photo Folder Changed", "External photo folder changed during confirmation.")
             return
-        self.remove_requested.emit(name, delete_photos, expected_photo_path)
+        self.remove_requested.emit(name, delete_photos, confirmed_path)

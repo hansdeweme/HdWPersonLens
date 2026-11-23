@@ -87,7 +87,7 @@ class ManagementContractInventoryTests(unittest.TestCase):
         gui = methods(PACKAGE / "recognition_gui.py", "MainWindow")
         dispatch = gui["_on_workbench_person_action"]
         calls = called_methods(dispatch)
-        for required in ("_current_person_name", "get_by_name", "get_person_state", "_start_reencode_worker"):
+        for required in ("_current_person_name", "get_by_name", "get_person_state", "open_reencode"):
             with self.subTest(call=required): self.assertIn(required, calls)
         self.assertTrue(rejection_guard(dispatch, ("name != selected", "name != self.person_context.name",
                                                    "self.person_db.get_by_name(name) is None")))
@@ -106,7 +106,13 @@ class ManagementContractInventoryTests(unittest.TestCase):
         for required in ("workbench._current_person_name() == name", "context.name == name",
                          "person_db.get_by_name(name) is not None", "self.gallery.person_name == name"):
             with self.subTest(context_check=required): self.assertIn(required, context)
-        self.assertTrue(rejection_guard(dispatch, ("not state.has_recognition_state", "not state.image_count")))
+        reencode = gui["_on_workbench_reencode_requested"]
+        self.assertTrue(rejection_guard(reencode, ("selected != name", "self.person_context.name != name",
+                                                   "self.person_db.get_by_name(name) is None", "not allowed")))
+        self.assertTrue(rejection_guard(reencode, ("source_snapshot(paths) != confirmed_snapshot",)))
+        start = next(n for n in ast.walk(reencode) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                     and n.func.attr == "_start_reencode_worker")
+        self.assertIn("confirmed_snapshot", {kw.arg for kw in start.keywords})
 
     def test_remove_default_preserves_external_photo_folder(self):
         service = methods(PACKAGE / "person_service.py", "PersonService")["remove_person"]

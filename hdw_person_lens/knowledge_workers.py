@@ -9,6 +9,7 @@ from collections.abc import Sequence
 # PyQt6 imports
 from PyQt6           import QtCore 
 from PyQt6.QtCore    import pyqtSignal, QThread, QObject, pyqtSlot
+from .kb_reference_recommendations import source_snapshot
 
 #------------------------------------------------------------------
 # Re-encode Knowledge Base Worker
@@ -57,6 +58,7 @@ class ReencodePersonsWorker(QObject):
         self.person_service = person_service
         self.names = list(names or [])
         self.all_persons = all_persons
+        self.confirmed_snapshot = None
         self._stop = False
 
     @pyqtSlot()
@@ -68,15 +70,27 @@ class ReencodePersonsWorker(QObject):
                 on_person_done=self.person_done.emit,
                 stop_flag=lambda: self._stop,
             )
-            result = (
-                self.person_service.reencode_all_persons(**kwargs)
-                if self.all_persons
-                else self.person_service.reencode_persons(
-                    names=self.names,
-                    continue_on_error=True,
-                    **kwargs,
+            if self.confirmed_snapshot is not None:
+                if self.all_persons or len(self.names) != 1:
+                    raise ValueError("A confirmed source snapshot requires exactly one person.")
+                # Acquire the same reentrant lock as PersonService before checking
+                # sources: a queued worker may have waited for another transaction.
+                with self.person_service._operation_lock:
+                    paths = self.person_service.get_person_image_paths(self.names[0])
+                    if not paths or source_snapshot(paths) != self.confirmed_snapshot:
+                        raise ValueError("KB image sources changed since confirmation. Review again.")
+                    result = self.person_service.reencode_persons(
+                        names=self.names, continue_on_error=True, **kwargs)
+            else:
+                result = (
+                    self.person_service.reencode_all_persons(**kwargs)
+                    if self.all_persons
+                    else self.person_service.reencode_persons(
+                        names=self.names,
+                        continue_on_error=True,
+                        **kwargs,
+                    )
                 )
-            )
             self.finished.emit(result)
         except Exception as exc:
             self.error.emit(str(exc))

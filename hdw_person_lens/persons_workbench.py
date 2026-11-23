@@ -47,6 +47,7 @@ from .person_workbench_rename import WorkbenchRenamePanel
 from .person_workbench_images import WorkbenchImageEditor
 from .person_workbench_add import WorkbenchAddPerson
 from .person_workbench_remove import WorkbenchRemovePanel
+from .person_workbench_reencode import WorkbenchReencodePanel
 
 
 class _PortraitSignals(QObject):
@@ -169,6 +170,7 @@ class PersonsWorkbench(QWidget):
     person_added = pyqtSignal(object)
     create_db_record_requested = pyqtSignal(str, str)
     remove_requested = pyqtSignal(str, bool, str)
+    reencode_requested = pyqtSignal(str, object)
     encoding_activity = pyqtSignal(str)
 
     def __init__(self, person_db, person_service, settings=None, parent=None):
@@ -355,6 +357,10 @@ class PersonsWorkbench(QWidget):
         self.remove_panel = WorkbenchRemovePanel(self.person_service, profile)
         self.remove_panel.remove_requested.connect(self.remove_requested.emit)
         profile_layout.addWidget(self.remove_panel)
+        self.reencode_panel = WorkbenchReencodePanel(self.person_service, profile)
+        self.reencode_panel.automatic_requested.connect(self.reencode_requested.emit)
+        self.reencode_panel.controlled_requested.connect(self._open_controlled_encoding)
+        profile_layout.addWidget(self.reencode_panel)
         self.kb_status = QLabel("KB: —")
         profile_layout.addWidget(self.kb_status)
         readiness_group = QGroupBox("Recognition readiness & KB health")
@@ -454,7 +460,8 @@ class PersonsWorkbench(QWidget):
         provenance_layout.addWidget(self.provenance)
         assessment_layout.addWidget(provenance_group)
         assessment_layout.addStretch()
-        self.detail_tabs.addTab(self._scroll_section(assessment), "KB Assessment")
+        self.assessment_scroll = self._scroll_section(assessment)
+        self.detail_tabs.addTab(self.assessment_scroll, "KB Assessment")
         self.detail_tabs.currentChanged.connect(self._on_detail_tab_changed)
         self.splitter.addWidget(details)
         self.splitter.setStretchFactor(0, 42)
@@ -745,6 +752,7 @@ class PersonsWorkbench(QWidget):
             if not self.add_panel.confirm_leave(): return False
             self._close_add_tab()
         if not self.image_editor.confirm_leave(): return False
+        self.reencode_panel.hide()
         if not self.remove_panel.confirm_discard(): return False
         if not self.rename_panel.confirm_discard(): return False
         if not self._profile_editing: return True
@@ -786,6 +794,10 @@ class PersonsWorkbench(QWidget):
             if not self.open_image_editor(name, checked=True):
                 QMessageBox.warning(self, "Edit Images", f"No current KB images found for '{name}'. Refresh and retry.")
             return
+        if action == "reencode":
+            if not self.open_reencode(name, checked=True):
+                QMessageBox.warning(self, "Re-encode", f"No usable current KB images found for '{name}'. Refresh and retry.")
+            return
         self.person_action_requested.emit(action, name)
 
     def open_add_person(self):
@@ -815,6 +827,20 @@ class PersonsWorkbench(QWidget):
         self.detail_tabs.setCurrentIndex(0)
         QTimer.singleShot(0, lambda: self.profile_scroll.ensureWidgetVisible(self.remove_panel, 8, 12))
         return True
+
+    def open_reencode(self, name: str, checked=False) -> bool:
+        if name != self._current_person_name(): return False
+        if not checked and not self._confirm_leave_profile(): return False
+        if not self.reencode_panel.open_for(name): return False
+        self.detail_tabs.setCurrentIndex(0)
+        QTimer.singleShot(0, lambda: self.profile_scroll.ensureWidgetVisible(self.reencode_panel, 8, 12))
+        return True
+
+    def _open_controlled_encoding(self, name: str):
+        if name != self._current_person_name(): return
+        self.reencode_panel.hide()
+        self.detail_tabs.setCurrentIndex(2)
+        QTimer.singleShot(0, lambda: self.assessment_scroll.ensureWidgetVisible(self.encoding_impact, 8, 12))
 
     def open_image_editor(self, name: str, checked=False) -> bool:
         if name != self._current_person_name(): return False

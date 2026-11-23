@@ -33,8 +33,8 @@ class WorkbenchRemoveContractTests(unittest.TestCase):
         self.assertIn("self.delete_photos.setEnabled(exists)", opening)
         review = src("person_workbench_remove.py", "WorkbenchRemovePanel", "_review")
         self.assertIn("QMessageBox.StandardButton.No", review)
-        self.assertIn("expected_photo_path = self.original_photo_path", review)
-        self.assertIn("self.remove_requested.emit(name, delete_photos, expected_photo_path)", review)
+        self.assertIn("self.remove_requested.emit(name, delete_photos, confirmed_path)", review)
+        self.assertIn("self.original_photo_path != confirmed_path", review)
 
     def test_removal_revalidates_selected_context_and_db(self):
         handler = src("recognition_gui.py", "MainWindow", "_on_workbench_remove_requested")
