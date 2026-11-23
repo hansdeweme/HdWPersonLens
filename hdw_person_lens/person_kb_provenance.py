@@ -32,11 +32,13 @@ class _ProvenanceJob(QRunnable):
 
 class PersonKBProvenancePanel(QWidget):
     image_requested = pyqtSignal(str)
+    report_ready = pyqtSignal(str, object)
 
     def __init__(self, service, parent=None):
         super().__init__(parent)
         self.service = service
         self.person = ""
+        self.report = None
         self._generation = 0
         self._jobs = {}
         self._stopping = False
@@ -72,6 +74,7 @@ class PersonKBProvenancePanel(QWidget):
 
     def invalidate(self):
         self._generation += 1
+        self.report = None
         self.results.clear()
         for generation, job in list(self._jobs.items()):
             if self._pool.tryTake(job): self._jobs.pop(generation, None)
@@ -87,6 +90,8 @@ class PersonKBProvenancePanel(QWidget):
             return
         if snapshot["records"] is None:
             self.summary.setText(f"Legacy encodings · {snapshot['face_count']} face / {snapshot['body_count']} body · source provenance unavailable")
+            self.report = {"status": "legacy"}
+            self.report_ready.emit(self.person, self.report)
             return
         generation = self._generation
         job = _ProvenanceJob(generation, snapshot)
@@ -100,7 +105,9 @@ class PersonKBProvenancePanel(QWidget):
         if self._stopping or generation != self._generation or name != self.person: return
         if error:
             self.summary.setText(f"Provenance unavailable: {error}")
+            self.report_ready.emit(name, None)
             return
+        self.report = report
         self.summary.setText(report["summary"])
         tones = {"Current": "#5cbe9c", "Changed": "#e1ad63", "Missing": "#e17c85", "Unreadable": "#e17c85"}
         for row in report["rows"]:
@@ -109,6 +116,7 @@ class PersonKBProvenancePanel(QWidget):
             item.setToolTip(0, row["path"])
             item.setForeground(1, QBrush(QColor(tones[row["freshness"]])))
             self.results.addTopLevelItem(item)
+        self.report_ready.emit(name, report)
 
     def shutdown(self):
         if self._stopping: return

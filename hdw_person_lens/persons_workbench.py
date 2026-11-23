@@ -34,6 +34,10 @@ from .person_kb_recommendations import PersonKBRecommendationPanel
 from .person_kb_assessment_workflow import PersonKBAssessmentWorkflow
 from .person_kb_encoding_impact import PersonKBEncodingImpactPanel
 from .person_kb_provenance import PersonKBProvenancePanel
+from .person_kb_readiness import PersonKBReadinessPanel
+from .kb_recognition_readiness import evaluate_readiness
+from .kb_curation_review import evidence_rows
+from .kb_reference_recommendations import source_snapshot
 from .person_kb_curation import PersonKBCurationPanel
 from .personlens_theme import apply_workbench_theme, initial_split_sizes
 from .person_db_gui import SchemaForm, load_schema
@@ -333,6 +337,13 @@ class PersonsWorkbench(QWidget):
         self._set_profile_editing(False)
         self.kb_status = QLabel("KB: —")
         profile_layout.addWidget(self.kb_status)
+        readiness_group = QGroupBox("Recognition readiness & KB health")
+        readiness_layout = QVBoxLayout(readiness_group)
+        self.readiness = PersonKBReadinessPanel(self)
+        readiness_layout.addWidget(self.readiness)
+        self.readiness.assessment_requested.connect(lambda: self.detail_tabs.setCurrentIndex(2))
+        self.readiness.refresh_requested.connect(self._refresh_readiness_requested)
+        profile_layout.addWidget(readiness_group)
         profile_layout.addStretch()
         self.detail_tabs.addTab(self._scroll_section(profile), "Profile")
 
@@ -384,6 +395,11 @@ class PersonsWorkbench(QWidget):
         self.provenance.image_requested.connect(self._navigate_assessment_image)
         self.encoding_impact.activity_message.connect(self.encoding_activity)
         self.encoding_impact.encoding_completed.connect(self._selected_encoding_completed)
+        self.provenance.report_ready.connect(lambda name, _report: self._refresh_readiness() if name == self._current_person_name() else None)
+        for panel in (self.collection, self.identity):
+            panel.assessment_ready.connect(lambda _report: QTimer.singleShot(0, self._refresh_readiness))
+            panel.assessment_invalidated.connect(lambda: QTimer.singleShot(0, self._refresh_readiness))
+        self.curation.decision_changed.connect(lambda: QTimer.singleShot(0, self._refresh_readiness))
         self.collection.assessment_invalidated.connect(self.recommendations.invalidate_collection)
         self.identity.assessment_invalidated.connect(self.recommendations.invalidate_identity)
         self.collection.assessment_invalidated.connect(self.curation.invalidate_collection)
@@ -553,8 +569,39 @@ class PersonsWorkbench(QWidget):
         if self._portrait_stopping or name != self._current_person_name(): return
         self.kb_status.setText(f"KB: {len(self.person_service.get_person_image_paths(name))} image(s) · "
             f"Controlled encoding: {result.face_encodings} face / {result.body_encodings} body embeddings")
+        self.provenance.invalidate()  # Prior bank/source evidence cannot describe the newly published encodings.
         self._provenance_pending = True
         QTimer.singleShot(0, self._load_pending_provenance)
+        self._refresh_readiness()
+
+    def _refresh_readiness(self):
+        if self._portrait_stopping: return
+        name = self._current_person_name()
+        if not name:
+            self.readiness.set_report(None)
+            return
+        paths = self.person_service.get_person_image_paths(name)
+        current = source_snapshot(paths)
+        collection = self.recommendations._collection
+        identity = self.recommendations._identity
+        collection = collection if isinstance(collection, dict) and collection.get("source_snapshot") == current else None
+        identity = identity if isinstance(identity, dict) and identity.get("source_snapshot") == current else None
+        reviewed, review_needed = 0, 0
+        for row in evidence_rows(paths, collection, identity):
+            decision, fresh = self.curation.store.get(name, row["path"], row["signature"])
+            if fresh and decision in ("keep", "exclude"): reviewed += 1
+            if any(finding != "Provisional shortlist" for finding in row["findings"]):
+                if not fresh or decision not in ("keep", "exclude"): review_needed += 1
+        state = self.person_service.get_person_state(name)
+        report = self.provenance.report if self.provenance.person == name else None
+        self.readiness.set_report(evaluate_readiness(images=len(paths), faces=state.face_encodings,
+            bodies=state.body_encodings, collection=collection, identity=identity, reviewed=reviewed,
+            review_needed=review_needed, provenance=report))
+
+    def _refresh_readiness_requested(self):
+        if self._portrait_stopping or not self._current_person_name(): return
+        self.provenance.refresh()  # User-requested hashing remains asynchronous, including from the Profile tab.
+        self._refresh_readiness()
 
     def _portrait_ready(self, name, generation, data):
         self._portrait_pending.pop((generation, name), None)
@@ -750,6 +797,7 @@ class PersonsWorkbench(QWidget):
         self.collection.set_person(name, kb_paths)
         self.identity.set_person(name, kb_paths)
         self.kb_status.setText(f"KB: {len(kb_paths)} image(s) · Assessment results in KB Assessment")
+        self._refresh_readiness()
         self.person_selected.emit(name)
 
     def _clear_details(self):
@@ -770,6 +818,7 @@ class PersonsWorkbench(QWidget):
         self.identity.set_person("", [])
         for label in self.fields.values(): label.setText("—")
         self.kb_status.setText("KB status: —")
+        self.readiness.set_report(None)
 
     def _prepare_assessment_sources(self):
         """Refresh read-only assessment inputs on an explicit guided restart."""
@@ -785,4 +834,5 @@ class PersonsWorkbench(QWidget):
         self.recommendations.set_person(name, paths)
         self.collection.set_person(name, paths)
         self.identity.set_person(name, paths)
+        self._refresh_readiness()
         return paths
