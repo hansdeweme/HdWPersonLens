@@ -300,12 +300,14 @@ class MainWindow(QMainWindow):
     def _sync_active_person_tab(self, _index: int) -> None:
         name = self.person_context.name
         if not name: return
-        if self.person_db.get_by_name(name) is None:
+        current = self.main_tabs.currentWidget()
+        db_exists = self.person_db.get_by_name(name) is not None
+        kb_exists = name in self.person_service.list_recognition_names()
+        if not db_exists and not kb_exists:
             self.person_context.select("")
             if self.main_tabs.currentWidget() is self.persons_workbench: self.persons_workbench.refresh()
             return
-        current = self.main_tabs.currentWidget()
-        if current is self.person_db_editor: self.person_db_editor.select_person(name)
+        if current is self.person_db_editor and db_exists: self.person_db_editor.select_person(name)
         elif current is self.persons_workbench: self.persons_workbench.select_person(name)
 
     def _on_person_record_saved(self, person_name: str, ) -> None:

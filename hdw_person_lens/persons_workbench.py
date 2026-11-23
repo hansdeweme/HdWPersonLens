@@ -43,6 +43,7 @@ from .personlens_theme import apply_workbench_theme, initial_split_sizes
 from .person_db_gui import SchemaForm, load_schema
 from .person_profile_merge import merge_profile
 from .person_action_policy import ACTION_LABELS, person_action_allowed
+from .person_roster_sources import combined_roster
 from .person_workbench_rename import WorkbenchRenamePanel
 from .person_workbench_images import WorkbenchImageEditor
 from .person_workbench_add import WorkbenchAddPerson
@@ -89,9 +90,10 @@ class PersonRosterModel(QAbstractTableModel):
     NAME_ROLE = Qt.ItemDataRole.UserRole + 1
     SEARCH_ROLE = Qt.ItemDataRole.UserRole + 2
 
-    def __init__(self, person_db, columns, parent=None):
+    def __init__(self, person_db, columns, parent=None, person_service=None):
         super().__init__(parent)
         self.person_db, self.columns, self.records = person_db, [("~portrait", "Portrait"), *columns], []
+        self.person_service = person_service
         self.portraits = {}
         self.reload()
 
@@ -99,7 +101,8 @@ class PersonRosterModel(QAbstractTableModel):
         self.person_db.reload_if_changed()
         rows = self.person_db.search(sort_by="personName")
         self.beginResetModel()
-        self.records = list(rows)
+        names = self.person_service.list_recognition_names() if self.person_service is not None else ()
+        self.records = combined_roster(rows, names)
         self.portraits.clear()
         self.endResetModel()
 
@@ -129,11 +132,16 @@ class PersonRosterModel(QAbstractTableModel):
         if role == Qt.ItemDataRole.DecorationRole and index.column() == 0:
             return self.portraits.get(name)
         if role == self.NAME_ROLE: return name
-        if role == self.SEARCH_ROLE: return " ".join(str(value) for value in record.values() if isinstance(value, (str, int, float)))
+        if role == self.SEARCH_ROLE:
+            values = " ".join(str(value) for value in record.values() if isinstance(value, (str, int, float)))
+            return f"{values} KB-only recognition profile" if record.get("_kb_only") else values
+        if role == Qt.ItemDataRole.ToolTipRole and record.get("_kb_only"):
+            return "Recognition-only KB profile; no Persons DB record. Profile editing and management require a DB record."
         if role == Qt.ItemDataRole.DisplayRole:
             path = self.columns[index.column()][0]
             if path == "~portrait":
                 return "" if name in self.portraits else "◯"
+            if path == "personName" and record.get("_kb_only"): return f"{name}  [KB only]"
             return _display_value(_value_at(record, path), path)
         if role == Qt.ItemDataRole.UserRole:
             path = self.columns[index.column()][0]
@@ -195,7 +203,7 @@ class PersonsWorkbench(QWidget):
         configured = self.settings.get("query_persons_view", {}).get("columns", [])
         columns = [(str(p), str(label)) for p, label in configured if isinstance(p, str) and isinstance(label, str)] if isinstance(configured, list) else []
         if not columns: columns = [("personName", "Name"), ("birth date", "Birth date"), ("rating", "Rating")]
-        self.model = PersonRosterModel(person_db, columns, self)
+        self.model = PersonRosterModel(person_db, columns, self, person_service=person_service)
         self.proxy = PersonRosterFilter(self)
         self.proxy.setSourceModel(self.model)
         self.proxy.layoutChanged.connect(self._schedule_visible_portraits)
@@ -766,7 +774,9 @@ class PersonsWorkbench(QWidget):
 
     def _update_person_actions(self, name):
         state = self.person_service.get_person_state(name) if name else None
-        self.action_target.setText(f"Managing: {name}" if name else "No person selected")
+        kb_only = bool(state and state.has_recognition_state and not state.database_record_exists)
+        self.action_target.setText(f"KB-only profile: {name} · inspection only" if kb_only else
+                                   f"Managing: {name}" if name else "No person selected")
         for action, button in self.person_actions.items():
             allowed, reason = person_action_allowed(action, name, state)
             button.setEnabled(allowed)
@@ -914,7 +924,9 @@ class PersonsWorkbench(QWidget):
         self.image_editor.set_person(name, kb_paths)
         self.collection.set_person(name, kb_paths)
         self.identity.set_person(name, kb_paths)
-        self.kb_status.setText(f"KB: {len(kb_paths)} image(s) · Assessment results in KB Assessment")
+        source_label = "KB-only profile · no Persons DB record" if not record else "Persons DB + KB"
+        self.kb_status.setText(f"{source_label} · KB: {len(kb_paths)} image(s) · Assessment results in KB Assessment")
+        self.profile_edit.setEnabled(bool(record) and self.profile_editor is not None)
         self._refresh_readiness()
         self.person_selected.emit(name)
 
