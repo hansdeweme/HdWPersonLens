@@ -66,7 +66,6 @@ class WorkbenchAddPerson(QWidget):
         self.apply.clicked.connect(self._start)
         self.cancel.clicked.connect(self._cancel)
         self.reset()
-        self.hide()
 
     def reset(self):
         if self.busy: return

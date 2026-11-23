@@ -165,7 +165,8 @@ class WorkbenchImageEditor(QWidget):
                                       f"Remove: {len(removals)}\n\nApply the file changes and re-encode this person?",
                                       QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
         if answer != QMessageBox.StandardButton.Yes: return
-        if not self._context_current(name) or {path_key(path): str(path) for path in self.service.get_person_image_paths(name)} != latest:
+        if (self._stopping or self.busy or name != self.person_name or not self._context_current(name) or
+                {path_key(path): str(path) for path in self.service.get_person_image_paths(name)} != latest):
             QMessageBox.warning(self, "KB Images Changed", "The selected person or KB images changed during confirmation.")
             return
         self._result, self._error = None, ""
@@ -190,7 +191,6 @@ class WorkbenchImageEditor(QWidget):
         self.thread.start()
 
     def _context_current(self, name):
-        if self._stopping or self.busy or name != self.person_name: return False
         window = self.window()
         workbench = getattr(window, "persons_workbench", None)
         context = getattr(window, "person_context", None)

@@ -46,6 +46,7 @@ from .person_action_policy import ACTION_LABELS, person_action_allowed
 from .person_workbench_rename import WorkbenchRenamePanel
 from .person_workbench_images import WorkbenchImageEditor
 from .person_workbench_add import WorkbenchAddPerson
+from .person_workbench_remove import WorkbenchRemovePanel
 
 
 class _PortraitSignals(QObject):
@@ -167,6 +168,7 @@ class PersonsWorkbench(QWidget):
     images_updated = pyqtSignal(str, int, int)
     person_added = pyqtSignal(object)
     create_db_record_requested = pyqtSignal(str, str)
+    remove_requested = pyqtSignal(str, bool, str)
     encoding_activity = pyqtSignal(str)
 
     def __init__(self, person_db, person_service, settings=None, parent=None):
@@ -303,6 +305,7 @@ class PersonsWorkbench(QWidget):
         self.detail_tabs.setAccessibleName("Person details")
         self.detail_tabs.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Expanding)
         self.add_panel = WorkbenchAddPerson(self.person_service, self.detail_tabs)
+        self.add_panel.setVisible(False)
         self.add_panel.person_added.connect(self.person_added.emit)
         self.add_panel.create_db_record_requested.connect(self.create_db_record_requested.emit)
         self.add_panel.close_requested.connect(self._close_add_tab)
@@ -349,6 +352,9 @@ class PersonsWorkbench(QWidget):
         self.rename_panel = WorkbenchRenamePanel(self.person_service, profile)
         self.rename_panel.rename_requested.connect(self.rename_requested.emit)
         profile_layout.addWidget(self.rename_panel)
+        self.remove_panel = WorkbenchRemovePanel(self.person_service, profile)
+        self.remove_panel.remove_requested.connect(self.remove_requested.emit)
+        profile_layout.addWidget(self.remove_panel)
         self.kb_status = QLabel("KB: —")
         profile_layout.addWidget(self.kb_status)
         readiness_group = QGroupBox("Recognition readiness & KB health")
@@ -739,6 +745,7 @@ class PersonsWorkbench(QWidget):
             if not self.add_panel.confirm_leave(): return False
             self._close_add_tab()
         if not self.image_editor.confirm_leave(): return False
+        if not self.remove_panel.confirm_discard(): return False
         if not self.rename_panel.confirm_discard(): return False
         if not self._profile_editing: return True
         if self._profile_document() != self._profile_original:
@@ -771,6 +778,10 @@ class PersonsWorkbench(QWidget):
             if not self.open_rename(name, checked=True):
                 QMessageBox.warning(self, "Rename Person", f"The selected person '{name}' is no longer available. Refresh and retry.")
             return
+        if action == "remove":
+            if not self.open_remove(name, checked=True):
+                QMessageBox.warning(self, "Remove Person", f"The selected person '{name}' is no longer available. Refresh and retry.")
+            return
         if action == "images":
             if not self.open_image_editor(name, checked=True):
                 QMessageBox.warning(self, "Edit Images", f"No current KB images found for '{name}'. Refresh and retry.")
@@ -795,6 +806,14 @@ class PersonsWorkbench(QWidget):
         if not self.rename_panel.open_for(name): return False
         self.detail_tabs.setCurrentIndex(0)
         QTimer.singleShot(0, lambda: self.profile_scroll.ensureWidgetVisible(self.rename_panel, 8, 12))
+        return True
+
+    def open_remove(self, name: str, checked=False) -> bool:
+        if name != self._current_person_name(): return False
+        if not checked and not self._confirm_leave_profile(): return False
+        if not self.remove_panel.open_for(name): return False
+        self.detail_tabs.setCurrentIndex(0)
+        QTimer.singleShot(0, lambda: self.profile_scroll.ensureWidgetVisible(self.remove_panel, 8, 12))
         return True
 
     def open_image_editor(self, name: str, checked=False) -> bool:

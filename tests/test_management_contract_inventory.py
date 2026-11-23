@@ -101,8 +101,9 @@ class ManagementContractInventoryTests(unittest.TestCase):
         for guard in guards:
             self.assertTrue(rejection_guard(applying, (ast.unparse(guard.test),)))
         context = ast.unparse(editor_methods["_context_current"])
-        for required in ("self._stopping", "self.busy", "name != self.person_name",
-                         "workbench._current_person_name() == name", "context.name == name",
+        self.assertTrue(rejection_guard(applying, ("self._stopping", "self.busy", "name != self.person_name",
+                                                    "not self._context_current(name)")))
+        for required in ("workbench._current_person_name() == name", "context.name == name",
                          "person_db.get_by_name(name) is not None", "self.gallery.person_name == name"):
             with self.subTest(context_check=required): self.assertIn(required, context)
         self.assertTrue(rejection_guard(dispatch, ("not state.has_recognition_state", "not state.image_count")))

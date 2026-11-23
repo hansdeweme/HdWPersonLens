@@ -282,6 +282,7 @@ class MainWindow(QMainWindow):
         self.persons_workbench.images_updated.connect(self._on_person_images_updated)
         self.persons_workbench.person_added.connect(self._on_person_added)
         self.persons_workbench.create_db_record_requested.connect(self._start_person_db_record)
+        self.persons_workbench.remove_requested.connect(self._on_workbench_remove_requested)
         self.main_tabs.addTab(self.persons_workbench, "Persons Workbench")
         self.person_context = PersonContext()
         self.person_db_editor.person_selected.connect(self._on_active_person_selected)
@@ -1608,6 +1609,42 @@ class MainWindow(QMainWindow):
         if hasattr(self, "persons_workbench"):
             self.persons_workbench.refresh()
 
+    def _on_workbench_remove_requested(self, name: str, delete_photo_folder: bool, expected_photo_path: str) -> None:
+        """Apply confirmed full removal after checking the Workbench's current selected identity."""
+        selected = self.persons_workbench._current_person_name()
+        record = self.person_db.get_by_name(name)
+        if (selected != name or self.person_context.name != name or record is None or
+                str(record.get("files_path") or "").strip() != expected_photo_path):
+            QMessageBox.warning(self, "Remove Person", "The selected person or its DB record changed. Refresh and review removal again.")
+            return
+        state = self.person_service.get_person_state(name)
+        allowed, reason = person_action_allowed("remove", name, state)
+        if not allowed:
+            QMessageBox.warning(self, "Remove Person", reason)
+            return
+        if delete_photo_folder and not os.path.isdir(expected_photo_path):
+            QMessageBox.warning(self, "Remove Person", "The external photo folder no longer exists. Review removal options again.")
+            return
+        try:
+            result = self.person_service.remove_person(name=name, remove_database_record=True, delete_photo_folder=delete_photo_folder)
+        except (PersonConflictError, PersonNotFoundError, PersonServiceError, ValueError, OSError) as exc:
+            QMessageBox.warning(self, "Removal Failed", str(exc))
+            self.display_message(f"[PersonService] Remove failed: {exc}")
+            return
+        except Exception as exc:
+            QMessageBox.critical(self, "Unexpected Removal Error", str(exc))
+            self.display_message(f"[PersonService] Unexpected removal error: {exc}")
+            return
+        self.persons_workbench.remove_panel.hide()
+        self._on_person_removed(name)
+        changed = [label for flag, label in ((result.knowledge_base_changed, "KB folder and encodings"),
+                   (result.database_changed, "Persons DB record"),
+                   (result.photo_folder_changed, "external photo collection folder")) if flag]
+        summary = "\n".join(f"• {label}" for label in changed) or "• No persisted resources changed"
+        warning_text = "\n\nWarnings:\n" + "\n".join(f"• {warning}" for warning in result.warnings) if result.warnings else ""
+        QMessageBox.information(self, "Person Removed", f"'{name}' was removed.\n\nRemoved:\n{summary}\n\n"
+                                f"Face encodings: {result.face_encodings}\nBody encodings: {result.body_encodings}{warning_text}")
+
     def edit_person_images(self):
         dialog = EditPersonImagesDialog(self.person_service, parent=self)
         dialog.person_images_updated.connect(self._on_person_images_updated)
@@ -1633,7 +1670,9 @@ class MainWindow(QMainWindow):
         elif action == "rename":
             if not self.persons_workbench.open_rename(name):
                 QMessageBox.warning(self, "Rename Person", "The selection changed or the rename could not be opened.")
-        elif action == "remove": self._show_remove_person_dialog(name)
+        elif action == "remove":
+            if not self.persons_workbench.open_remove(name):
+                QMessageBox.warning(self, "Remove Person", "The selection changed or removal review could not be opened.")
         elif action == "images":
             if not self.persons_workbench.open_image_editor(name):
                 QMessageBox.warning(self, "Edit Images", f"No current recognition profile found for '{name}'.")
