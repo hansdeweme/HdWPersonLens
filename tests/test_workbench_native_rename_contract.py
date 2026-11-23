@@ -50,7 +50,8 @@ class NativeRenameContractTests(unittest.TestCase):
     def test_success_reuses_shared_refresh_and_error_does_not(self):
         execute = method("recognition_gui.py", "MainWindow", "_on_workbench_rename_requested")
         source = ast.unparse(execute)
-        self.assertIn("self._on_person_renamed(old_name, new_name)", source)
+        self.assertIn("self._on_person_renamed(old_name, canonical_name)", source)
+        self.assertIn("canonical_name = result.name", source)
         self.assertIn("except (PersonConflictError, PersonNotFoundError, PersonServiceError, ValueError, OSError)", source)
         for handler in (n for n in ast.walk(execute) if isinstance(n, ast.ExceptHandler)):
             self.assertFalse(any(isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and

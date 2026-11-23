@@ -92,7 +92,13 @@ class ManagementContractInventoryTests(unittest.TestCase):
         self.assertTrue(rejection_guard(dispatch, ("name != selected", "name != self.person_context.name",
                                                    "self.person_db.get_by_name(name) is None")))
         self.assertTrue(rejection_guard(dispatch, ("not allowed",)))
-        self.assertTrue(rejection_guard(dispatch, ("not dialog.select_person(name)",)))
+        self.assertIn("open_image_editor", calls)
+        editor = methods(PACKAGE / "person_workbench_images.py", "WorkbenchImageEditor")["_apply"]
+        self.assertTrue(rejection_guard(editor, ("name != self.gallery.person_name",
+                                                "name != workbench._current_person_name()", "name != context.name",
+                                                "self.service.get_person_record(name) is None")))
+        self.assertTrue(rejection_guard(editor, ("name != self.person_name", "name != context.name",
+                                                "self.service.get_person_record(name) is None")))
         self.assertTrue(rejection_guard(dispatch, ("not state.has_recognition_state", "not state.image_count")))
 
     def test_remove_default_preserves_external_photo_folder(self):

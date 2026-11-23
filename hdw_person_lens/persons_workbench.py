@@ -44,6 +44,7 @@ from .person_db_gui import SchemaForm, load_schema
 from .person_profile_merge import merge_profile
 from .person_action_policy import ACTION_LABELS, person_action_allowed
 from .person_workbench_rename import WorkbenchRenamePanel
+from .person_workbench_images import WorkbenchImageEditor
 
 
 class _PortraitSignals(QObject):
@@ -162,6 +163,7 @@ class PersonsWorkbench(QWidget):
     portrait_error = pyqtSignal(str)
     person_action_requested = pyqtSignal(str, str)
     rename_requested = pyqtSignal(str, str, bool, object, str)
+    images_updated = pyqtSignal(str, int, int)
     encoding_activity = pyqtSignal(str)
 
     def __init__(self, person_db, person_service, settings=None, parent=None):
@@ -365,8 +367,12 @@ class PersonsWorkbench(QWidget):
         portrait_actions.addWidget(choose_portrait)
         portrait_actions.addWidget(reset_portrait)
         gallery_layout.addLayout(portrait_actions)
+        self.image_editor = WorkbenchImageEditor(self.person_service, self.gallery, gallery_page)
+        self.image_editor.images_updated.connect(self.images_updated.emit)
+        gallery_layout.addWidget(self.image_editor)
         gallery_layout.addWidget(self.gallery)
-        self.detail_tabs.addTab(self._scroll_section(gallery_page), "KB Gallery")
+        self.gallery_scroll = self._scroll_section(gallery_page)
+        self.detail_tabs.addTab(self.gallery_scroll, "KB Gallery")
 
         assessment = QWidget()
         assessment_layout = QVBoxLayout(assessment)
@@ -478,6 +484,7 @@ class PersonsWorkbench(QWidget):
         name, paths, preferred = self._gallery_pending
         self._gallery_pending = None
         self.gallery.set_person(name, paths, preferred)
+        self.image_editor._render()  # Lazy decoding must not erase staged removal markers.
         if self._assessment_image_pending:
             self.gallery.select_path(self._assessment_image_pending)
             self._assessment_image_pending = None
@@ -559,6 +566,7 @@ class PersonsWorkbench(QWidget):
         if self._portrait_stopping: return
         self._portrait_stopping = True
         self._portrait_generation += 1
+        self.image_editor.shutdown()
         self.encoding_impact.shutdown()
         self.provenance.shutdown()
         self.recommendations.shutdown()
@@ -719,6 +727,7 @@ class PersonsWorkbench(QWidget):
         return merge_profile(self._profile_original, self.profile_editor.collect_data(), paths, baseline=self._profile_baseline)
 
     def _confirm_leave_profile(self):
+        if not self.image_editor.confirm_leave(): return False
         if not self.rename_panel.confirm_discard(): return False
         if not self._profile_editing: return True
         if self._profile_document() != self._profile_original:
@@ -745,6 +754,10 @@ class PersonsWorkbench(QWidget):
             if not self.open_rename(name, checked=True):
                 QMessageBox.warning(self, "Rename Person", f"The selected person '{name}' is no longer available. Refresh and retry.")
             return
+        if action == "images":
+            if not self.open_image_editor(name, checked=True):
+                QMessageBox.warning(self, "Edit Images", f"No current KB images found for '{name}'. Refresh and retry.")
+            return
         self.person_action_requested.emit(action, name)
 
     def open_rename(self, name: str, checked=False) -> bool:
@@ -753,6 +766,18 @@ class PersonsWorkbench(QWidget):
         if not self.rename_panel.open_for(name): return False
         self.detail_tabs.setCurrentIndex(0)
         QTimer.singleShot(0, lambda: self.profile_scroll.ensureWidgetVisible(self.rename_panel, 8, 12))
+        return True
+
+    def open_image_editor(self, name: str, checked=False) -> bool:
+        if name != self._current_person_name(): return False
+        if not checked and not self._confirm_leave_profile(): return False
+        allowed, _reason = person_action_allowed("images", name, self.person_service.get_person_state(name))
+        if not allowed: return False
+        paths = self.person_service.get_person_image_paths(name)
+        if not self.image_editor.open_for(name, paths): return False
+        self.detail_tabs.setCurrentIndex(1)
+        QTimer.singleShot(0, self._load_pending_gallery)
+        QTimer.singleShot(0, lambda: self.gallery_scroll.ensureWidgetVisible(self.image_editor, 8, 12))
         return True
 
     def _cancel_profile_edit(self):
@@ -813,6 +838,7 @@ class PersonsWorkbench(QWidget):
         self.assessment_flow.set_person(name, kb_paths)
         self.recommendations.set_person(name, kb_paths)
         self._set_gallery_person(name, kb_paths, self.portrait_service.preferred_image(name))
+        self.image_editor.set_person(name, kb_paths)
         self.collection.set_person(name, kb_paths)
         self.identity.set_person(name, kb_paths)
         self.kb_status.setText(f"KB: {len(kb_paths)} image(s) · Assessment results in KB Assessment")
@@ -833,6 +859,7 @@ class PersonsWorkbench(QWidget):
         self.portrait.clear()
         self.portrait.setText("Portrait pending")
         self._set_gallery_person("", [])
+        self.image_editor.set_person("", [])
         self.collection.set_person("", [])
         self.identity.set_person("", [])
         for label in self.fields.values(): label.setText("—")

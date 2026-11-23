@@ -276,9 +276,10 @@ class MainWindow(QMainWindow):
             self.person_db, self.person_service, self.settings, parent=self
         )
         self.persons_workbench.portrait_error.connect(self.display_message)
-        self.persons_workbench.encoding_activity.connect(self.display_message)
         self.persons_workbench.person_action_requested.connect(self._on_workbench_person_action)
         self.persons_workbench.rename_requested.connect(self._on_workbench_rename_requested)
+        self.persons_workbench.encoding_activity.connect(self.display_message)
+        self.persons_workbench.images_updated.connect(self._on_person_images_updated)
         self.main_tabs.addTab(self.persons_workbench, "Persons Workbench")
         self.person_context = PersonContext()
         self.person_db_editor.person_selected.connect(self._on_active_person_selected)
@@ -1589,13 +1590,13 @@ class MainWindow(QMainWindow):
             self.display_message(f"[PersonService] Unexpected rename error: {exc}")
             return
         self.persons_workbench.rename_panel.hide()
-        new_name = result.name
-        self._on_person_renamed(old_name, new_name)
+        canonical_name = result.name
+        self._on_person_renamed(old_name, canonical_name)
         changes = [label for changed, label in ((result.database_changed, "Persons DB record"),
                   (result.knowledge_base_changed, "KB folder and encodings"),
                   (result.photo_folder_changed, "external photo collection folder")) if changed]
         summary = "\n".join(f"• {label}" for label in changes) or "• No persisted resources changed"
-        QMessageBox.information(self, "Rename Completed", f"'{old_name}' was renamed to '{new_name}'.\n\n"
+        QMessageBox.information(self, "Rename Completed", f"'{old_name}' was renamed to '{canonical_name}'.\n\n"
                                 f"Updated:\n{summary}\n\nFace labels: {result.face_encodings}\nBody labels: {result.body_encodings}")
 
     def _on_person_removed(self, person_name: str, ) -> None:
@@ -1632,12 +1633,8 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, "Rename Person", "The selection changed or the rename could not be opened.")
         elif action == "remove": self._show_remove_person_dialog(name)
         elif action == "images":
-            dialog = EditPersonImagesDialog(self.person_service, parent=self)
-            if not dialog.select_person(name):
-                QMessageBox.warning(self, "Edit Images", f"No recognition profile found for '{name}'.")
-                return
-            dialog.person_images_updated.connect(self._on_person_images_updated)
-            dialog.exec()
+            if not self.persons_workbench.open_image_editor(name):
+                QMessageBox.warning(self, "Edit Images", f"No current recognition profile found for '{name}'.")
         elif action == "reencode":
             state = self.person_service.get_person_state(name)
             if not state.has_recognition_state or not state.image_count:
