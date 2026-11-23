@@ -3,8 +3,8 @@
 import os
 from pathlib import Path
 
-from PyQt6.QtCore import QThread, QTimer, Qt, pyqtSignal
-from PyQt6.QtGui import QColor
+from PyQt6.QtCore import QObject, QRunnable, QSize, QThread, QThreadPool, QTimer, Qt, pyqtSignal
+from PyQt6.QtGui import QColor, QIcon, QImage, QImageReader, QPixmap
 from PyQt6.QtWidgets import QFileDialog, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMessageBox, QPushButton, QVBoxLayout, QWidget
 
 from .person_management_diags import EditPersonImagesWorker
@@ -12,6 +12,37 @@ from .person_management_diags import EditPersonImagesWorker
 
 def path_key(path):
     return os.path.normcase(os.path.abspath(os.fspath(path)))
+
+
+def image_signature(path):
+    try:
+        info = os.stat(path)
+        return (info.st_size, info.st_mtime_ns)
+    except OSError: return None
+
+
+class _ThumbSignals(QObject):
+    loaded = pyqtSignal(int, int, str, object, object)
+
+
+class _ThumbJob(QRunnable):
+    def __init__(self, job_id, generation, key, path, signature):
+        super().__init__()
+        self.setAutoDelete(False)
+        self.job_id, self.generation, self.key, self.path, self.signature = job_id, generation, key, path, signature
+        self.signals = _ThumbSignals()
+
+    def run(self):
+        try:
+            reader = QImageReader(self.path)
+            reader.setAutoTransform(True)
+            size = reader.size()
+            if size.isValid():
+                size.scale(72, 72, Qt.AspectRatioMode.KeepAspectRatio)
+                reader.setScaledSize(size)
+            image = reader.read()
+        except Exception: image = QImage()
+        self.signals.loaded.emit(self.job_id, self.generation, self.key, self.signature, image)
 
 
 class WorkbenchImageEditor(QWidget):
@@ -30,6 +61,11 @@ class WorkbenchImageEditor(QWidget):
         self._error = ""
         self._operation_token = None
         self._stopping = False
+        self._thumb_pool = QThreadPool(self)
+        self._thumb_pool.setMaxThreadCount(2)
+        self._thumb_jobs = {}
+        self._thumb_cache = {}
+        self._thumb_generation = self._thumb_next_id = 0
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 4, 0, 4)
         toolbar = QHBoxLayout()
@@ -46,7 +82,8 @@ class WorkbenchImageEditor(QWidget):
         self.pending = QListWidget()
         self.pending.setAccessibleName("Pending KB image changes")
         self.pending.setToolTip("Double-click a pending item to undo that individual change.")
-        self.pending.setMaximumHeight(120)
+        self.pending.setIconSize(QSize(72, 72))
+        self.pending.setMaximumHeight(190)
         self.pending.itemDoubleClicked.connect(self._undo_pending_item)
         layout.addWidget(self.pending)
         self.add_button.clicked.connect(self._add_images)
@@ -121,6 +158,8 @@ class WorkbenchImageEditor(QWidget):
         self._render()
 
     def _render(self):
+        self._thumb_generation += 1
+        self._cancel_queued_thumbs()
         self.pending.clear()
         for change, paths in (("add", self.additions), ("remove", self.removals)):
             for key, path in paths.items():
@@ -128,6 +167,7 @@ class WorkbenchImageEditor(QWidget):
                 item.setData(Qt.ItemDataRole.UserRole, (change, key))
                 item.setToolTip(f"Double-click to undo: {path}")
                 self.pending.addItem(item)
+                if change == "add": self._request_thumb(item, key, path)
         for i in range(self.gallery.images.count()):
             item = self.gallery.images.item(i)
             key = path_key(item.data(Qt.ItemDataRole.UserRole))
@@ -136,6 +176,39 @@ class WorkbenchImageEditor(QWidget):
         self.status.setText(f"{len(self.existing)} KB image(s) · +{len(self.additions)} pending · −{len(self.removals)} pending. "
                             "Curation Exclude decisions do not remove images.")
         self._sync_controls()
+
+    def _cancel_queued_thumbs(self):
+        for job_id, job in list(self._thumb_jobs.items()):
+            if self._thumb_pool.tryTake(job): self._thumb_jobs.pop(job_id, None)
+
+    def _request_thumb(self, item, key, path):
+        signature = image_signature(path)
+        if signature is None:
+            item.setToolTip(f"Image unavailable; remove and review: {path}")
+            return
+        cache_key = (key, signature)
+        cached = self._thumb_cache.get(cache_key)
+        if cached is not None:
+            if not cached.isNull(): item.setIcon(QIcon(QPixmap.fromImage(cached)))
+            return
+        self._thumb_next_id += 1
+        job = _ThumbJob(self._thumb_next_id, self._thumb_generation, key, path, signature)
+        job.signals.loaded.connect(self._thumb_loaded)
+        self._thumb_jobs[job.job_id] = job
+        self._thumb_pool.start(job)
+
+    def _thumb_loaded(self, job_id, generation, key, signature, image):
+        self._thumb_jobs.pop(job_id, None)
+        if self._stopping or generation != self._thumb_generation or key not in self.additions: return
+        if image_signature(self.additions[key]) != signature: return
+        if len(self._thumb_cache) >= 128: self._thumb_cache.clear()
+        self._thumb_cache[(key, signature)] = image
+        for i in range(self.pending.count()):
+            item = self.pending.item(i)
+            if item.data(Qt.ItemDataRole.UserRole) == ("add", key):
+                if not image.isNull(): item.setIcon(QIcon(QPixmap.fromImage(image)))
+                else: item.setToolTip(f"Image preview unavailable; verify before applying: {self.additions[key]}")
+                break
 
     def _sync_controls(self):
         selected = self.gallery.selected_path()
@@ -236,6 +309,10 @@ class WorkbenchImageEditor(QWidget):
     def shutdown(self):
         if self._stopping: return
         self._stopping = True
+        self._thumb_generation += 1
+        self._cancel_queued_thumbs()
+        self._thumb_pool.waitForDone()
+        self._thumb_jobs.clear()
         thread = self.thread
         if thread is not None:
             try:
