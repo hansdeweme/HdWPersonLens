@@ -40,7 +40,7 @@ from .person_db_gui           import PersonDbEditorWidget
 from .persons_workbench       import PersonsWorkbench
 from .person_context          import PersonContext
 from .person_action_policy    import ACTION_LABELS, person_action_allowed
-from .person_service          import PersonService, ReencodeBatchResult
+from .person_service          import PersonService, ReencodeBatchResult, PersonConflictError, PersonNotFoundError, PersonServiceError
 from .knowledge_workers       import ReencodePersonsWorker
 from .kb_gallery_dialog       import KBGalleryOptimizerDialog
 from .kb_curation             import KBCandidateStore
@@ -278,6 +278,7 @@ class MainWindow(QMainWindow):
         self.persons_workbench.portrait_error.connect(self.display_message)
         self.persons_workbench.encoding_activity.connect(self.display_message)
         self.persons_workbench.person_action_requested.connect(self._on_workbench_person_action)
+        self.persons_workbench.rename_requested.connect(self._on_workbench_rename_requested)
         self.main_tabs.addTab(self.persons_workbench, "Persons Workbench")
         self.person_context = PersonContext()
         self.person_db_editor.person_selected.connect(self._on_active_person_selected)
@@ -1562,6 +1563,41 @@ class MainWindow(QMainWindow):
         if hasattr(self, "persons_workbench"):
             self.persons_workbench.refresh(select_name=new_name)
 
+    def _on_workbench_rename_requested(self, old_name: str, new_name: str, rename_photos: bool,
+                                       new_photo_path: object, expected_photo_path: str) -> None:
+        """Revalidate a confirmed Workbench rename immediately before invoking PersonService."""
+        selected = self.persons_workbench._current_person_name()
+        record = self.person_db.get_by_name(old_name)
+        if (selected != old_name or self.person_context.name != old_name or record is None or
+                str(record.get("files_path") or "").strip() != expected_photo_path):
+            QMessageBox.warning(self, "Rename Person", "The selected person or its record changed. Refresh and review the rename again.")
+            return
+        state = self.person_service.get_person_state(old_name)
+        allowed, reason = person_action_allowed("rename", old_name, state)
+        if not allowed:
+            QMessageBox.warning(self, "Rename Person", reason)
+            return
+        try:
+            result = self.person_service.rename_person(old_name=old_name, new_name=new_name,
+                                                       rename_photo_folder=rename_photos, new_photo_path=new_photo_path)
+        except (PersonConflictError, PersonNotFoundError, PersonServiceError, ValueError, OSError) as exc:
+            QMessageBox.warning(self, "Rename Failed", str(exc))
+            self.display_message(f"[PersonService] Rename failed: {exc}")
+            return
+        except Exception as exc:
+            QMessageBox.critical(self, "Unexpected Rename Error", str(exc))
+            self.display_message(f"[PersonService] Unexpected rename error: {exc}")
+            return
+        self.persons_workbench.rename_panel.hide()
+        new_name = result.name
+        self._on_person_renamed(old_name, new_name)
+        changes = [label for changed, label in ((result.database_changed, "Persons DB record"),
+                  (result.knowledge_base_changed, "KB folder and encodings"),
+                  (result.photo_folder_changed, "external photo collection folder")) if changed]
+        summary = "\n".join(f"• {label}" for label in changes) or "• No persisted resources changed"
+        QMessageBox.information(self, "Rename Completed", f"'{old_name}' was renamed to '{new_name}'.\n\n"
+                                f"Updated:\n{summary}\n\nFace labels: {result.face_encodings}\nBody labels: {result.body_encodings}")
+
     def _on_person_removed(self, person_name: str, ) -> None:
         if self.person_context.name == person_name: self.person_context.select("")
         self.display_message(f"[PersonService] Removed person: " f"{person_name}")
@@ -1591,7 +1627,9 @@ class MainWindow(QMainWindow):
                 return
             self.statusBar().showMessage(f"{ACTION_LABELS[action]} · {name}", 5000)
         if action == "add": self._show_add_person_dialog()
-        elif action == "rename": self._show_rename_person_dialog(name)
+        elif action == "rename":
+            if not self.persons_workbench.open_rename(name):
+                QMessageBox.warning(self, "Rename Person", "The selection changed or the rename could not be opened.")
         elif action == "remove": self._show_remove_person_dialog(name)
         elif action == "images":
             dialog = EditPersonImagesDialog(self.person_service, parent=self)
