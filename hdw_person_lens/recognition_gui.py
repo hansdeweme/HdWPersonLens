@@ -280,6 +280,8 @@ class MainWindow(QMainWindow):
         self.persons_workbench.rename_requested.connect(self._on_workbench_rename_requested)
         self.persons_workbench.encoding_activity.connect(self.display_message)
         self.persons_workbench.images_updated.connect(self._on_person_images_updated)
+        self.persons_workbench.person_added.connect(self._on_person_added)
+        self.persons_workbench.create_db_record_requested.connect(self._start_person_db_record)
         self.main_tabs.addTab(self.persons_workbench, "Persons Workbench")
         self.person_context = PersonContext()
         self.person_db_editor.person_selected.connect(self._on_active_person_selected)
@@ -1627,7 +1629,7 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, ACTION_LABELS[action], reason)
                 return
             self.statusBar().showMessage(f"{ACTION_LABELS[action]} · {name}", 5000)
-        if action == "add": self._show_add_person_dialog()
+        if action == "add": self.persons_workbench.open_add_person()
         elif action == "rename":
             if not self.persons_workbench.open_rename(name):
                 QMessageBox.warning(self, "Rename Person", "The selection changed or the rename could not be opened.")

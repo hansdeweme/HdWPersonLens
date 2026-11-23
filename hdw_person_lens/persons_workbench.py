@@ -45,6 +45,7 @@ from .person_profile_merge import merge_profile
 from .person_action_policy import ACTION_LABELS, person_action_allowed
 from .person_workbench_rename import WorkbenchRenamePanel
 from .person_workbench_images import WorkbenchImageEditor
+from .person_workbench_add import WorkbenchAddPerson
 
 
 class _PortraitSignals(QObject):
@@ -164,6 +165,8 @@ class PersonsWorkbench(QWidget):
     person_action_requested = pyqtSignal(str, str)
     rename_requested = pyqtSignal(str, str, bool, object, str)
     images_updated = pyqtSignal(str, int, int)
+    person_added = pyqtSignal(object)
+    create_db_record_requested = pyqtSignal(str, str)
     encoding_activity = pyqtSignal(str)
 
     def __init__(self, person_db, person_service, settings=None, parent=None):
@@ -299,6 +302,10 @@ class PersonsWorkbench(QWidget):
         self.detail_tabs = QTabWidget()
         self.detail_tabs.setAccessibleName("Person details")
         self.detail_tabs.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Expanding)
+        self.add_panel = WorkbenchAddPerson(self.person_service, self.detail_tabs)
+        self.add_panel.person_added.connect(self.person_added.emit)
+        self.add_panel.create_db_record_requested.connect(self.create_db_record_requested.emit)
+        self.add_panel.close_requested.connect(self._close_add_tab)
         self._gallery_pending = None
         self._assessment_image_pending = None
         detail_layout.addWidget(self.detail_tabs, 1)
@@ -566,6 +573,7 @@ class PersonsWorkbench(QWidget):
         if self._portrait_stopping: return
         self._portrait_stopping = True
         self._portrait_generation += 1
+        self.add_panel.shutdown()
         self.image_editor.shutdown()
         self.encoding_impact.shutdown()
         self.provenance.shutdown()
@@ -727,6 +735,9 @@ class PersonsWorkbench(QWidget):
         return merge_profile(self._profile_original, self.profile_editor.collect_data(), paths, baseline=self._profile_baseline)
 
     def _confirm_leave_profile(self):
+        if self.detail_tabs.indexOf(self.add_panel) >= 0:
+            if not self.add_panel.confirm_leave(): return False
+            self._close_add_tab()
         if not self.image_editor.confirm_leave(): return False
         if not self.rename_panel.confirm_discard(): return False
         if not self._profile_editing: return True
@@ -749,7 +760,13 @@ class PersonsWorkbench(QWidget):
     def _request_person_action(self, action):
         name = self._current_person_name() if action != "add" else ""
         if action != "add" and not name: return
+        if action == "add" and self.detail_tabs.indexOf(self.add_panel) >= 0:
+            self.detail_tabs.setCurrentWidget(self.add_panel)
+            return
         if not self._confirm_leave_profile(): return
+        if action == "add":
+            self.open_add_person()
+            return
         if action == "rename":
             if not self.open_rename(name, checked=True):
                 QMessageBox.warning(self, "Rename Person", f"The selected person '{name}' is no longer available. Refresh and retry.")
@@ -759,6 +776,18 @@ class PersonsWorkbench(QWidget):
                 QMessageBox.warning(self, "Edit Images", f"No current KB images found for '{name}'. Refresh and retry.")
             return
         self.person_action_requested.emit(action, name)
+
+    def open_add_person(self):
+        if self.detail_tabs.indexOf(self.add_panel) < 0:
+            self.add_panel.reset()
+            self.detail_tabs.addTab(self.add_panel, "Add Person")
+        self.detail_tabs.setCurrentWidget(self.add_panel)
+
+    def _close_add_tab(self):
+        index = self.detail_tabs.indexOf(self.add_panel)
+        if index >= 0:
+            self.detail_tabs.removeTab(index)
+            self.detail_tabs.setCurrentIndex(0)
 
     def open_rename(self, name: str, checked=False) -> bool:
         if name != self._current_person_name(): return False
@@ -771,10 +800,9 @@ class PersonsWorkbench(QWidget):
     def open_image_editor(self, name: str, checked=False) -> bool:
         if name != self._current_person_name(): return False
         if not checked and not self._confirm_leave_profile(): return False
-        allowed, _reason = person_action_allowed("images", name, self.person_service.get_person_state(name))
-        if not allowed: return False
         paths = self.person_service.get_person_image_paths(name)
-        if not self.image_editor.open_for(name, paths): return False
+        state = self.person_service.get_person_state(name)
+        if not state.has_recognition_state or not self.image_editor.open_for(name, paths): return False
         self.detail_tabs.setCurrentIndex(1)
         QTimer.singleShot(0, self._load_pending_gallery)
         QTimer.singleShot(0, lambda: self.gallery_scroll.ensureWidgetVisible(self.image_editor, 8, 12))

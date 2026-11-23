@@ -147,13 +147,11 @@ class WorkbenchImageEditor(QWidget):
     def _apply(self):
         name = self.person_name
         if self._stopping or self.busy or not name or not self.has_changes(): return
-        parent_window = self.window()
-        workbench = getattr(parent_window, "persons_workbench", None)
-        context = getattr(parent_window, "person_context", None)
-        if (workbench is None or context is None or name != self.gallery.person_name
-                or name != workbench._current_person_name() or name != context.name
-                or self.service.get_person_record(name) is None):
-            QMessageBox.warning(self, "Image Context Changed", "The active person or database record changed. Refresh and review the image changes again.")
+        if not self._context_current(name):
+            QMessageBox.warning(self, "Image Context Changed", "The active person or database record changed. Review again.")
+            return
+        if name != self.gallery.person_name:
+            QMessageBox.warning(self, "Image Context Changed", "The gallery now shows another person. Review changes again.")
             return
         latest = {path_key(path): str(path) for path in self.service.get_person_image_paths(name)}
         if latest != self.existing:
@@ -167,14 +165,12 @@ class WorkbenchImageEditor(QWidget):
                                       f"Remove: {len(removals)}\n\nApply the file changes and re-encode this person?",
                                       QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
         if answer != QMessageBox.StandardButton.Yes: return
-        if (self._stopping or self.busy or name != self.person_name or name != self.gallery.person_name
-                or name != workbench._current_person_name() or name != context.name
-                or self.service.get_person_record(name) is None
-                or {path_key(path): str(path) for path in self.service.get_person_image_paths(name)} != latest):
+        if not self._context_current(name) or {path_key(path): str(path) for path in self.service.get_person_image_paths(name)} != latest:
             QMessageBox.warning(self, "KB Images Changed", "The selected person or KB images changed during confirmation.")
             return
         self._result, self._error = None, ""
         self.busy = True
+        parent_window = self.window()
         begin = getattr(parent_window, "begin_person_operation", None)
         self._operation_token = begin(f"Edit Images: {name}") if callable(begin) else None
         self._sync_controls()
@@ -192,6 +188,15 @@ class WorkbenchImageEditor(QWidget):
         self.thread.finished.connect(lambda: QTimer.singleShot(0, self._complete))
         self.thread.finished.connect(self.thread.deleteLater)
         self.thread.start()
+
+    def _context_current(self, name):
+        if self._stopping or self.busy or name != self.person_name: return False
+        window = self.window()
+        workbench = getattr(window, "persons_workbench", None)
+        context = getattr(window, "person_context", None)
+        person_db = getattr(window, "person_db", None)
+        return bool(workbench and context and person_db and workbench._current_person_name() == name and
+                    context.name == name and person_db.get_by_name(name) is not None and self.gallery.person_name == name)
 
     def _forward_progress(self, value):
         handler = getattr(self.window(), "progress_person_operation", None)

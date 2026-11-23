@@ -93,12 +93,18 @@ class ManagementContractInventoryTests(unittest.TestCase):
                                                    "self.person_db.get_by_name(name) is None")))
         self.assertTrue(rejection_guard(dispatch, ("not allowed",)))
         self.assertIn("open_image_editor", calls)
-        editor = methods(PACKAGE / "person_workbench_images.py", "WorkbenchImageEditor")["_apply"]
-        self.assertTrue(rejection_guard(editor, ("name != self.gallery.person_name",
-                                                "name != workbench._current_person_name()", "name != context.name",
-                                                "self.service.get_person_record(name) is None")))
-        self.assertTrue(rejection_guard(editor, ("name != self.person_name", "name != context.name",
-                                                "self.service.get_person_record(name) is None")))
+        editor_methods = methods(PACKAGE / "person_workbench_images.py", "WorkbenchImageEditor")
+        applying = editor_methods["_apply"]
+        guards = [branch for branch in ast.walk(applying) if isinstance(branch, ast.If)
+                  and "not self._context_current(name)" in ast.unparse(branch.test)]
+        self.assertEqual(len(guards), 2)
+        for guard in guards:
+            self.assertTrue(rejection_guard(applying, (ast.unparse(guard.test),)))
+        context = ast.unparse(editor_methods["_context_current"])
+        for required in ("self._stopping", "self.busy", "name != self.person_name",
+                         "workbench._current_person_name() == name", "context.name == name",
+                         "person_db.get_by_name(name) is not None", "self.gallery.person_name == name"):
+            with self.subTest(context_check=required): self.assertIn(required, context)
         self.assertTrue(rejection_guard(dispatch, ("not state.has_recognition_state", "not state.image_count")))
 
     def test_remove_default_preserves_external_photo_folder(self):
