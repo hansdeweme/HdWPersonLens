@@ -1,0 +1,14 @@
+--- a/hdw_person_lens/person_action_policy.py
++++ b/hdw_person_lens/person_action_policy.py
+@@ -7,8 +7,10 @@
+ def person_action_allowed(action: str, name: str, state) -> tuple[bool, str]:
+     if action == "add": return True, ""
+     if action not in ACTION_LABELS: return False, "Unknown person action."
+-    if not name or state is None or not state.database_record_exists:
++    if not name or state is None or not (state.database_record_exists or state.has_recognition_state):
+         return False, "The selected person is no longer available. Refresh and try again."
++    if not state.database_record_exists and action not in ("rename", "remove"):
++        return False, "This KB-only profile has no Persons DB record; use the advanced tool for this action."
+     if action in ("images", "reencode") and not state.has_recognition_state:
+         return False, f"No recognition profile is available for '{name}'."
+     if action == "reencode" and not state.image_count:

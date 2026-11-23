@@ -1,0 +1,25 @@
+--- a/hdw_person_lens/persons_workbench.py
++++ b/hdw_person_lens/persons_workbench.py
+@@ -136,7 +136,7 @@
+             values = " ".join(str(value) for value in record.values() if isinstance(value, (str, int, float)))
+             return f"{values} KB-only recognition profile" if record.get("_kb_only") else values
+         if role == Qt.ItemDataRole.ToolTipRole and record.get("_kb_only"):
+-            return "Recognition-only KB profile; no Persons DB record. Profile editing and management require a DB record."
++            return "Recognition-only KB profile; no Persons DB record. Rename and Remove are available; profile editing, Edit Images and Re-encode require a DB record."
+         if role == Qt.ItemDataRole.DisplayRole:
+             path = self.columns[index.column()][0]
+             if path == "~portrait":
+@@ -173,11 +173,11 @@
+     person_selected = pyqtSignal(str)
+     portrait_error = pyqtSignal(str)
+     person_action_requested = pyqtSignal(str, str)
+-    rename_requested = pyqtSignal(str, str, bool, object, str)
++    rename_requested = pyqtSignal(str, str, bool, object, str, object)
+     images_updated = pyqtSignal(str, int, int)
+     person_added = pyqtSignal(object)
+     create_db_record_requested = pyqtSignal(str, str)
+-    remove_requested = pyqtSignal(str, bool, str)
++    remove_requested = pyqtSignal(str, bool, str, object)
+     reencode_requested = pyqtSignal(str, object)
+     encoding_activity = pyqtSignal(str)
+ 
