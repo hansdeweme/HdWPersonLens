@@ -180,6 +180,7 @@ class PersonsWorkbench(QWidget):
     remove_requested = pyqtSignal(str, bool, str, object)
     reencode_requested = pyqtSignal(str, object)
     encoding_activity = pyqtSignal(str)
+    advanced_editor_requested = pyqtSignal(str)
 
     def __init__(self, person_db, person_service, settings=None, parent=None):
         super().__init__(parent)
@@ -332,6 +333,11 @@ class PersonsWorkbench(QWidget):
         self.profile_edit, self.profile_save = self.profile_panel.edit_button, self.profile_panel.save_button
         self.profile_cancel, self.profile_message = self.profile_panel.cancel_button, self.profile_panel.message
         self.profile_editor, self.profile_schema = self.profile_panel.editor, self.profile_panel.schema
+        self.open_advanced_editor = QPushButton("Open in Advanced Editor")
+        self.open_advanced_editor.setToolTip("Open this database record in the full Persons DB schema editor.")
+        self.open_advanced_editor.setEnabled(False)
+        self.open_advanced_editor.clicked.connect(self._request_advanced_editor)
+        profile_layout.addWidget(self.open_advanced_editor)
         self.profile_edit.clicked.connect(self._start_profile_edit)
         self.profile_save.clicked.connect(self._save_profile)
         self.profile_cancel.clicked.connect(self._cancel_profile_edit)
@@ -720,7 +726,7 @@ class PersonsWorkbench(QWidget):
         self._profile_original = deepcopy(record)
         self.profile_editor.populate(record)
         self._profile_baseline = self.profile_editor.collect_data()
-        self.profile_message.setText("Name, person ID and image folder are managed through their dedicated actions.")
+        self.profile_panel.feedback("Name, person ID and image folder are managed through their dedicated actions.")
         self._set_profile_editing(True)
 
     def _profile_document(self):
@@ -747,12 +753,21 @@ class PersonsWorkbench(QWidget):
     def _update_person_actions(self, name):
         state = self.person_service.get_person_state(name) if name else None
         kb_only = bool(state and state.has_recognition_state and not state.database_record_exists)
+        if hasattr(self, "open_advanced_editor"):
+            self.open_advanced_editor.setEnabled(bool(name and state and state.database_record_exists))
         self.action_target.setText(f"KB-only profile: {name} · KB management available" if kb_only else
                                    f"Managing: {name}" if name else "No person selected")
         for action, button in self.person_actions.items():
             allowed, reason = person_action_allowed(action, name, state)
             button.setEnabled(allowed)
             button.setStatusTip(reason or f"{ACTION_LABELS[action]}" + (f" · {name}" if name else ""))
+
+    def _request_advanced_editor(self):
+        name = self._current_person_name()
+        if not name or self.person_db.get_by_name(name) is None:
+            QMessageBox.warning(self, "Advanced Editor", "The selected database record is no longer available. Refresh and retry.")
+            return
+        self.advanced_editor_requested.emit(name)
 
     def _request_person_action(self, action):
         name = self._current_person_name() if action != "add" else ""
@@ -854,14 +869,19 @@ class PersonsWorkbench(QWidget):
                 self.person_db.upsert(document, original_name=name)
         except ValidationError as exc:
             path = ".".join(map(str, exc.path)) or "<root>"
+            field_path = tuple(exc.path)
+            if exc.validator == "required" and "'" in exc.message:
+                field_path += (exc.message.split("'", 2)[1],)
+            self.profile_panel.feedback(f"Invalid at {'.'.join(map(str, field_path)) or '<root>'}: {exc.message}", error=True)
             QMessageBox.warning(self, "Invalid Profile", f"Invalid at {path}: {exc.message}")
+            QTimer.singleShot(0, lambda: self.profile_panel.focus_invalid_field(field_path, self.profile_scroll))
             return
         except (OSError, ValueError, RuntimeError) as exc:
             QMessageBox.warning(self, "Save Profile", str(exc))
             return
         self._cancel_profile_edit()
         self.refresh()
-        self.profile_message.setText("Profile saved.")
+        self.profile_panel.feedback("Profile saved.")
 
     def _on_current_row(self, current, _previous):
         if not self._confirm_leave_profile():

@@ -286,6 +286,7 @@ class MainWindow(QMainWindow):
         self.persons_workbench.create_db_record_requested.connect(self._start_person_db_record)
         self.persons_workbench.remove_requested.connect(self._on_workbench_remove_requested)
         self.persons_workbench.reencode_requested.connect(self._on_workbench_reencode_requested)
+        self.persons_workbench.advanced_editor_requested.connect(self.open_advanced_person)
         self.main_tabs.addTab(self.persons_workbench, "Persons Workbench")
         self.person_context = PersonContext()
         self.person_db_editor.person_selected.connect(self._on_active_person_selected)
@@ -308,8 +309,11 @@ class MainWindow(QMainWindow):
             self.person_context.select("")
             if self.main_tabs.currentWidget() is self.persons_workbench: self.persons_workbench.refresh()
             return
-        if current is self.person_db_editor and db_exists: self.person_db_editor.select_person(name)
-        elif current is self.persons_workbench: self.persons_workbench.select_person(name)
+        if current is self.person_db_editor and db_exists:
+            if not self.person_db_editor.select_person(name): self.person_context.select(self.person_db_editor.current_key or "")
+        elif current is self.persons_workbench:
+            if not self.persons_workbench.select_person(name):
+                self.person_context.select(self.persons_workbench._current_person_name())
 
     def _on_person_record_saved(self, person_name: str, ) -> None:
         self.person_context.select(person_name)
@@ -494,6 +498,31 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Persons Database", str(exc),)
             return
         self.main_tabs.setCurrentWidget(self.person_db_editor)
+
+    def open_advanced_person(self, name: str) -> bool:
+        """Open an exact DB record without replacing either editor's unsaved work."""
+        if not name or name != self.person_context.name or name != self.persons_workbench._current_person_name():
+            QMessageBox.warning(self, "Advanced Editor", "The active person changed. Review the Workbench selection again.")
+            return False
+        if self.person_db.get_by_name(name) is None:
+            QMessageBox.warning(self, "Advanced Editor", "This person has no current database record.")
+            return False
+        editor = self.person_db_editor
+        if editor.current_key != name and editor.has_unsaved_changes():
+            QMessageBox.warning(self, "Advanced Editor", "Persons DB contains unsaved edits. Save or discard them first.")
+            return False
+        if not self.persons_workbench._confirm_leave_profile(): return False
+        if name != self.person_context.name or name != self.persons_workbench._current_person_name(): return False
+        try: editor.refresh_from_database()
+        except Exception as exc:
+            QMessageBox.warning(self, "Advanced Editor", str(exc))
+            return False
+        if self.person_db.get_by_name(name) is None or not editor.select_person(name):
+            QMessageBox.warning(self, "Advanced Editor", "The database record changed or could not be selected. Refresh and retry.")
+            return False
+        if self.person_context.name != name or editor.current_key != name: return False
+        self.main_tabs.setCurrentWidget(editor)
+        return True
 
     def show_persons_workbench(self) -> None:
         """Navigate to the integrated roster without restarting any KB analyses."""
