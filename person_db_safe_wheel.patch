@@ -1,0 +1,47 @@
+--- a/hdw_person_lens/person_db_gui.py
++++ b/hdw_person_lens/person_db_gui.py
+@@ -96,6 +96,17 @@
+ # Builds a data-entry form from a JSON Schema (subset: object/number/integer/string/boolean + enum + pattern + minimum/maximum). 
+ # Supports collect_data() and populate(data).
+ #--------------------------------------------------------------------
++class _FormWheelScrollMixin:
++    """Let the enclosing form scroll instead of changing values under the pointer."""
++    def wheelEvent(self, event):
++        event.ignore()
++
++
++class _FormComboBox(_FormWheelScrollMixin, QComboBox): pass
++class _FormSpinBox(_FormWheelScrollMixin, QSpinBox): pass
++class _FormDoubleSpinBox(_FormWheelScrollMixin, QDoubleSpinBox): pass
++
++
+ class SchemaForm(QWidget):
+     def __init__(self, schema: Dict[str, Any], parent=None):
+         super().__init__(parent)
+@@ -137,7 +148,7 @@
+         enum_vals = schema.get("enum")
+         # --- Enum -> QComboBox ---
+         if enum_vals:
+-            combo = QComboBox()
++            combo = _FormComboBox()
+             if not is_required:
+                 combo.addItem("")  # allow blank
+             for val in enum_vals:
+@@ -248,7 +259,7 @@
+             minimum = schema.get("minimum", -1e9)
+             maximum = schema.get("maximum", 1e9)
+             if stype == "integer":
+-                sp = QSpinBox()
++                sp = _FormSpinBox()
+                 sp.setRange(int(minimum), int(maximum))
+                 def get_num():
+                     return int(sp.value())
+@@ -259,7 +270,7 @@
+                         pass
+                 return sp, get_num, set_num
+             else:
+-                dsp = QDoubleSpinBox()
++                dsp = _FormDoubleSpinBox()
+                 dsp.setDecimals(6)
+                 dsp.setRange(float(minimum), float(maximum))
+                 def get_dnum():

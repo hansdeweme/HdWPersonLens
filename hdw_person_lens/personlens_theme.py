@@ -280,3 +280,26 @@ def apply_management_dialog_theme(dialog, *, primary=(), danger=()):
     for button in primary: button.setProperty("themeRole", "primary")
     for button in danger: button.setProperty("themeRole", "danger")
     dialog.setStyleSheet(MANAGEMENT_DIALOG_STYLE)
+
+
+QUERY_DIALOG_STYLE = WORKBENCH_STYLE.replace("QWidget#personsWorkbench", "QDialog#personQueryDialog") + """
+QDialog#personQueryDialog { background: #12161f; color: #e2e8f0; }
+QDialog#personQueryDialog QTableWidget { alternate-background-color: #171e2a; }
+QDialog#personQueryDialog QTableWidget::item:selected { background: #254b6a; color: #ffffff; }
+QDialog#personQueryDialog QComboBox QAbstractItemView {
+    background: #1a202c; color: #e2e8f0; selection-background-color: #254b6a;
+}
+QDialog#personQueryDialog QMenu { background: #1a202c; color: #e2e8f0; border: 1px solid #384658; }
+QDialog#personQueryDialog QMenu::item:selected { background: #254b6a; }
+QDialog#personQueryDialog QDialogButtonBox { background: transparent; }
+QDialog#personQueryDialog QScrollBar:vertical { background: #12161f; width: 12px; }
+QDialog#personQueryDialog QScrollBar::handle:vertical { background: #46566d; border-radius: 4px; min-height: 20px; }
+QDialog#personQueryDialog QScrollBar:horizontal { background: #12161f; height: 12px; }
+QDialog#personQueryDialog QScrollBar::handle:horizontal { background: #46566d; border-radius: 4px; min-width: 20px; }
+"""
+
+
+def apply_query_dialog_theme(dialog):
+    """Style legacy query dialogs without changing parent or application styles."""
+    dialog.setObjectName("personQueryDialog")
+    dialog.setStyleSheet(QUERY_DIALOG_STYLE)

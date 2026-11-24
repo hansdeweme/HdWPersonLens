@@ -19,6 +19,7 @@ from PyQt6           import QtWidgets, QtGui, QtCore
 # local imports
 from .recognition_contenders import ContenderSlateWidget
 from .config                 import save_settings, ENCODINGS_FILENAME, DEFAULT_RECOGNITION_EXTENSIONS, APP_DISPLAY_TITLE, APP_NAME, APP_VERSION
+from .personlens_theme       import apply_query_dialog_theme
 
 @dataclass(frozen=True)
 class InteractiveRecognitionDecision:
@@ -236,6 +237,7 @@ def _normalise_lookalike_dialog_row(row) -> dict:
 class LookalikeFinderDialog(QDialog):
     def __init__(self, names, default_topk=10, parent=None, has_body=True):
         super().__init__(parent)
+        apply_query_dialog_theme(self)
         self.setWindowTitle("Find Lookalikes")
         self.resize(420, 200)
         self.selected = None  # (name, mode, topk)
@@ -297,6 +299,7 @@ class LookalikeResultsDialog(QDialog):
 
     def __init__(self, title, rows, *, mode: str = "face", threshold=None, sample_getter=None, folder_getter=None, target_name=None, parent=None,):
         super().__init__(parent)
+        apply_query_dialog_theme(self)
         self.setWindowTitle(title)
         self.resize(1120, 620)
         self.mode = str(mode or "face")
@@ -362,8 +365,8 @@ class LookalikeResultsDialog(QDialog):
         )
         self.table.setItemDelegate(SubtleFocusDelegate(self.table))
         self.table.setStyleSheet("""
-        QTableWidget {selection-background-color: #EAF1F8; selection-color: #1F2933;}
-        QTableWidget::item:selected {background-color: #EAF1F8; color: #1F2933;}
+        QTableWidget {selection-background-color: #254b6a; selection-color: #ffffff;}
+        QTableWidget::item:selected {background-color: #254b6a; color: #ffffff;}
         """)
         self.table.setRowCount(len(self.rows))
         self.table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -563,6 +566,7 @@ class LookalikeResultsDialog(QDialog):
 class SimilarPersonsDialog(QDialog):
     def __init__(self, comparisons, face_threshold=None, parent=None, title="Person Similarity (Face Encodings)", threshold=None, folder_getter=None, sample_getter=None):
         super().__init__(parent)
+        apply_query_dialog_theme(self)
         self.setWindowTitle(title)
         self.resize(600, 400)
         layout = QVBoxLayout()
@@ -674,6 +678,7 @@ class SimilarPersonsDialog(QDialog):
 class FusedCompareDialog(QDialog):
     def __init__(self, rows, fused_threshold=0.65, sample_getter=None, folder_getter=None, parent=None):
         super().__init__(parent)
+        apply_query_dialog_theme(self)
         self.setWindowTitle("Cross Compare (Fused: Face + Body)")
         self.resize(800, 500)
         self.rows = rows
@@ -772,6 +777,7 @@ class FusedCompareDialog(QDialog):
 class SideBySidePreviewDialog(QDialog):
     def __init__(self, left_path, right_path, left_title, right_title, parent=None):
         super().__init__(parent)
+        apply_query_dialog_theme(self)
         self.setWindowTitle(f"{left_title}  ⇄  {right_title}")
         self.resize(1000, 600)
 

@@ -23,7 +23,7 @@ from jsonschema import Draft202012Validator, ValidationError
 from PyQt6.QtCore import (QAbstractTableModel, QEvent, QModelIndex, QObject, QRunnable, QSignalBlocker, QSize, QSortFilterProxyModel,
                           QThreadPool, QTimer, Qt, pyqtSignal)
 from PyQt6.QtGui import QImage, QKeySequence, QPixmap, QShortcut
-from PyQt6.QtWidgets import (QApplication, QAbstractItemView, QFormLayout, QGroupBox, QHeaderView, QHBoxLayout, QLabel, QLineEdit,
+from PyQt6.QtWidgets import (QApplication, QAbstractItemView, QGroupBox, QHeaderView, QHBoxLayout, QLabel, QLineEdit,
                              QMessageBox, QPushButton, QScrollArea, QSizePolicy, QSplitter, QTabWidget, QTableView, QVBoxLayout, QWidget)
 from .person_portrait_service import PersonPortraitService
 from .portrait_process import PortraitProcessRunner
@@ -40,8 +40,8 @@ from .kb_curation_review import evidence_rows
 from .kb_reference_recommendations import source_snapshot
 from .person_kb_curation import PersonKBCurationPanel
 from .personlens_theme import apply_workbench_theme, initial_split_sizes
-from .person_db_gui import SchemaForm, load_schema
 from .person_profile_merge import merge_profile
+from .person_profile_panel import PersonProfilePanel
 from .person_action_policy import ACTION_LABELS, person_action_allowed
 from .person_roster_sources import combined_roster
 from .person_workbench_rename import WorkbenchRenamePanel
@@ -325,36 +325,13 @@ class PersonsWorkbench(QWidget):
 
         profile = QWidget()
         profile_layout = QVBoxLayout(profile)
-        self.profile_summary = QWidget()
-        self.profile_summary.setObjectName("profileSummary")
-        self.details_form = QFormLayout(self.profile_summary)
-        self.fields = {}
-        for path, label in columns:
-            field = QLabel("—")
-            field.setWordWrap(True)
-            self.details_form.addRow(label + ":", field)
-            self.fields[path] = field
-        profile_layout.addWidget(self.profile_summary)
-        self.profile_edit = QPushButton("Edit Profile")
-        self.profile_save = QPushButton("Save")
-        self.profile_save.setProperty("themeRole", "primary")
-        self.profile_cancel = QPushButton("Cancel")
-        self.profile_message = QLabel("")
-        self.profile_editor = None
-        self.profile_schema = None
-        schema_path = self.settings.get("schema_path")
-        if schema_path:
-            try:
-                self.profile_schema = load_schema(schema_path)
-                self.profile_editor = SchemaForm(self.profile_schema, profile)
-                self.profile_editor.set_locked_fields({"personName", "#person_id", "files_path"})
-                profile_layout.addWidget(self.profile_editor)
-            except (OSError, ValueError) as exc:
-                self.profile_message.setText(f"Profile editing unavailable: {exc}")
-        buttons = QHBoxLayout()
-        for button in (self.profile_edit, self.profile_save, self.profile_cancel): buttons.addWidget(button)
-        profile_layout.addLayout(buttons)
-        profile_layout.addWidget(self.profile_message)
+        self.profile_panel = PersonProfilePanel(columns, self.settings.get("schema_path"), profile)
+        profile_layout.addWidget(self.profile_panel)
+        self.profile_summary = self.profile_panel.summary
+        self.fields = self.profile_panel.fields
+        self.profile_edit, self.profile_save = self.profile_panel.edit_button, self.profile_panel.save_button
+        self.profile_cancel, self.profile_message = self.profile_panel.cancel_button, self.profile_panel.message
+        self.profile_editor, self.profile_schema = self.profile_panel.editor, self.profile_panel.schema
         self.profile_edit.clicked.connect(self._start_profile_edit)
         self.profile_save.clicked.connect(self._save_profile)
         self.profile_cancel.clicked.connect(self._cancel_profile_edit)
@@ -730,12 +707,7 @@ class PersonsWorkbench(QWidget):
         self._profile_editing = editing
         if not editing: self._profile_original = None
         if not editing: self._profile_baseline = None
-        self.profile_edit.setVisible(not editing)
-        self.profile_edit.setEnabled(not editing and self.profile_editor is not None)
-        self.profile_save.setVisible(editing)
-        self.profile_cancel.setVisible(editing)
-        if self.profile_editor is not None: self.profile_editor.setVisible(editing)
-        self.profile_summary.setVisible(not editing)
+        self.profile_panel.set_editing(editing)
 
     def _start_profile_edit(self):
         name = self._current_person_name()
@@ -911,7 +883,7 @@ class PersonsWorkbench(QWidget):
             self.portrait.clear()
             self.portrait.setText("Portrait unavailable" if name in self._portrait_failures else "Portrait pending")
             self._request_portrait(name)
-        for path, label in self.fields.items(): label.setText(_display_value(_value_at(record, path), path) or "—")
+        self.profile_panel.set_record(record)
         kb_paths = self.person_service.get_person_image_paths(name)
         self.curation.set_person(name, kb_paths)
         self.encoding_impact.set_person(name, kb_paths)
@@ -926,7 +898,6 @@ class PersonsWorkbench(QWidget):
         self.identity.set_person(name, kb_paths)
         source_label = "KB-only profile · no Persons DB record" if not record else "Persons DB + KB"
         self.kb_status.setText(f"{source_label} · KB: {len(kb_paths)} image(s) · Assessment results in KB Assessment")
-        self.profile_edit.setEnabled(bool(record) and self.profile_editor is not None)
         self._refresh_readiness()
         self.person_selected.emit(name)
 
@@ -947,7 +918,7 @@ class PersonsWorkbench(QWidget):
         self.image_editor.set_person("", [])
         self.collection.set_person("", [])
         self.identity.set_person("", [])
-        for label in self.fields.values(): label.setText("—")
+        self.profile_panel.set_record({})
         self.kb_status.setText("KB status: —")
         self.readiness.set_report(None)
 

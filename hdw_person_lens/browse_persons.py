@@ -13,6 +13,12 @@ from PyQt6.QtWidgets import (QPushButton, QMessageBox, QLabel, QVBoxLayout, QHBo
                              QComboBox, QButtonGroup, QWidget, QGridLayout, QSizePolicy)
 # local imports                             
 from .person_db      import PersonDB
+from .personlens_theme import apply_query_dialog_theme
+
+
+class _FilterComboBox(QComboBox):
+    def wheelEvent(self, event):
+        event.ignore()
 
 
 def _safe_int(value) -> int:
@@ -124,6 +130,7 @@ class QueryPersonsDialog(QDialog):
 
     def __init__(self, person_db: PersonDB, folder_getter=None, sample_getter=None, settings=None, parent=None):
         super().__init__(parent)
+        apply_query_dialog_theme(self)
         self.db = person_db
         self.settings = settings or {}
         self.BASE_COLS = _load_view_columns(self.settings)
@@ -173,7 +180,7 @@ class QueryPersonsDialog(QDialog):
             layout.setSpacing(4)
             label = QLabel(self._prettify(key_path))
             label.setStyleSheet("font-size: 8pt;")
-            combo = QComboBox()
+            combo = _FilterComboBox()
             combo.addItem("All", 0)
             combo.addItem("Yes", 1)
             combo.addItem("No", 2)
