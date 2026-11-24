@@ -42,6 +42,7 @@ from .person_kb_curation import PersonKBCurationPanel
 from .personlens_theme import apply_workbench_theme, initial_split_sizes
 from .person_profile_merge import merge_profile
 from .person_profile_panel import PersonProfilePanel
+from .person_status_dashboard import PersonStatusDashboard
 from .person_action_policy import ACTION_LABELS, person_action_allowed
 from .person_roster_sources import combined_roster
 from .person_workbench_rename import WorkbenchRenamePanel
@@ -328,6 +329,8 @@ class PersonsWorkbench(QWidget):
         profile_layout = QVBoxLayout(profile)
         self.profile_panel = PersonProfilePanel(columns, self.settings.get("schema_path"), profile)
         profile_layout.addWidget(self.profile_panel)
+        self.status_dashboard = PersonStatusDashboard(profile)
+        profile_layout.addWidget(self.status_dashboard)
         self.profile_summary = self.profile_panel.summary
         self.fields = self.profile_panel.fields
         self.profile_edit, self.profile_save = self.profile_panel.edit_button, self.profile_panel.save_button
@@ -605,6 +608,7 @@ class PersonsWorkbench(QWidget):
         name = self._current_person_name()
         if not name:
             self.readiness.set_report(None)
+            self.status_dashboard.set_status(None)
             return
         paths = self.person_service.get_person_image_paths(name)
         current = source_snapshot(paths)
@@ -620,9 +624,11 @@ class PersonsWorkbench(QWidget):
                 if not fresh or decision not in ("keep", "exclude"): review_needed += 1
         state = self.person_service.get_person_state(name)
         report = self.provenance.report if self.provenance.person == name else None
-        self.readiness.set_report(evaluate_readiness(images=len(paths), faces=state.face_encodings,
+        readiness = evaluate_readiness(images=len(paths), faces=state.face_encodings,
             bodies=state.body_encodings, collection=collection, identity=identity, reviewed=reviewed,
-            review_needed=review_needed, provenance=report))
+            review_needed=review_needed, provenance=report)
+        self.readiness.set_report(readiness)
+        self.status_dashboard.set_status(state, readiness, report)
 
     def _refresh_readiness_requested(self):
         if self._portrait_stopping or not self._current_person_name(): return
@@ -904,6 +910,7 @@ class PersonsWorkbench(QWidget):
             self.portrait.setText("Portrait unavailable" if name in self._portrait_failures else "Portrait pending")
             self._request_portrait(name)
         self.profile_panel.set_record(record)
+        self.status_dashboard.set_status(self.person_service.get_person_state(name))
         kb_paths = self.person_service.get_person_image_paths(name)
         self.curation.set_person(name, kb_paths)
         self.encoding_impact.set_person(name, kb_paths)
@@ -939,6 +946,7 @@ class PersonsWorkbench(QWidget):
         self.collection.set_person("", [])
         self.identity.set_person("", [])
         self.profile_panel.set_record({})
+        self.status_dashboard.set_status(None)
         self.kb_status.setText("KB status: —")
         self.readiness.set_report(None)
 
