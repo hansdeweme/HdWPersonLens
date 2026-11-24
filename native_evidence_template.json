@@ -1,7 +1,0 @@
-{
-  "add": {"qt": false, "db_backed": false, "kb_only": false, "cancellation": false, "failure": false, "rollback": false, "context": false, "freshness": false, "activity": false},
-  "rename": {"qt": false, "db_backed": false, "kb_only": false, "cancellation": false, "failure": false, "rollback": false, "context": false, "freshness": false, "activity": false},
-  "remove": {"qt": false, "db_backed": false, "kb_only": false, "cancellation": false, "failure": false, "rollback": false, "context": false, "freshness": false, "activity": false},
-  "images": {"qt": false, "db_backed": false, "kb_only": false, "cancellation": false, "failure": false, "rollback": false, "context": false, "freshness": false, "activity": false},
-  "reencode": {"qt": false, "db_backed": false, "kb_only": false, "cancellation": false, "failure": false, "rollback": false, "context": false, "freshness": false, "activity": false}
-}

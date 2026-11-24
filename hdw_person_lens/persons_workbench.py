@@ -23,7 +23,7 @@ from jsonschema import Draft202012Validator, ValidationError
 from PyQt6.QtCore import (QAbstractTableModel, QEvent, QModelIndex, QObject, QRunnable, QSignalBlocker, QSize, QSortFilterProxyModel,
                           QThreadPool, QTimer, Qt, pyqtSignal)
 from PyQt6.QtGui import QImage, QKeySequence, QPixmap, QShortcut
-from PyQt6.QtWidgets import (QApplication, QAbstractItemView, QGroupBox, QHeaderView, QHBoxLayout, QLabel, QLineEdit,
+from PyQt6.QtWidgets import (QApplication, QAbstractItemView, QComboBox, QGroupBox, QHeaderView, QHBoxLayout, QLabel, QLineEdit,
                              QMessageBox, QPushButton, QScrollArea, QSizePolicy, QSplitter, QTabWidget, QTableView, QVBoxLayout, QWidget)
 from .person_portrait_service import PersonPortraitService
 from .portrait_process import PortraitProcessRunner
@@ -43,6 +43,7 @@ from .personlens_theme import apply_workbench_theme, initial_split_sizes
 from .person_profile_merge import merge_profile
 from .person_profile_panel import PersonProfilePanel
 from .person_status_dashboard import PersonStatusDashboard
+from .person_roster_filter_policy import record_matches_filters, search_terms
 from .person_action_policy import ACTION_LABELS, person_action_allowed
 from .person_roster_sources import combined_roster
 from .person_workbench_rename import WorkbenchRenamePanel
@@ -134,7 +135,7 @@ class PersonRosterModel(QAbstractTableModel):
             return self.portraits.get(name)
         if role == self.NAME_ROLE: return name
         if role == self.SEARCH_ROLE:
-            values = " ".join(str(value) for value in record.values() if isinstance(value, (str, int, float)))
+            values = search_terms(record)
             return f"{values} KB-only recognition profile" if record.get("_kb_only") else values
         if role == Qt.ItemDataRole.ToolTipRole and record.get("_kb_only"):
             return "Recognition-only KB profile; management is available, but Persons DB profile editing requires a DB record."
@@ -158,16 +159,23 @@ class PersonRosterFilter(QSortFilterProxyModel):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.needle = ""
+        self.source_mode = "all"
         self.setSortRole(Qt.ItemDataRole.UserRole)
 
     def set_search_text(self, value: str):
         self.needle = value.strip().casefold()
         self.invalidateFilter()
 
+    def set_source_mode(self, mode: str):
+        self.source_mode = mode if mode in ("all", "db", "kb_only") else "all"
+        self.invalidateFilter()
+
     def filterAcceptsRow(self, source_row, source_parent):
-        index = self.sourceModel().index(source_row, 1, source_parent)
-        value = self.sourceModel().data(index, PersonRosterModel.SEARCH_ROLE) or ""
-        return self.needle in value.casefold()
+        return record_matches_filters(self.sourceModel().records[source_row], self.needle, self.source_mode)
+
+
+class _RosterSourceCombo(QComboBox):
+    def wheelEvent(self, event): event.ignore()
 
 class PersonsWorkbench(QWidget):
     """Searchable person roster, editable profile, KB assessment and selected-person actions."""
@@ -228,13 +236,29 @@ class PersonsWorkbench(QWidget):
         self.clear_search_shortcut.activated.connect(self.search.clear)
         self.search.textChanged.connect(self.proxy.set_search_text)
         self.search.textChanged.connect(self._schedule_visible_portraits)
+        self.source_filter = _RosterSourceCombo()
+        self.source_filter.setAccessibleName("Person record source filter")
+        self.source_filter.setToolTip("Filter DB-backed or recognition-only people without modifying their records.")
+        for label, mode in (("All people", "all"), ("Persons DB", "db"), ("KB only", "kb_only")):
+            self.source_filter.addItem(label, mode)
+        self.source_filter.currentIndexChanged.connect(lambda _index: self.proxy.set_source_mode(self.source_filter.currentData()))
+        self.roster_count = QLabel("0 people")
+        self.roster_count.setObjectName("personRosterCount")
+        self.roster_count.setAccessibleName("Visible person count")
         refresh = QPushButton("Refresh")
         refresh.setProperty("themeRole", "secondary")
         refresh.setToolTip("Reload person records and refresh the current roster selection.")
         refresh.clicked.connect(self.refresh)
         toolbar.addWidget(self.search, 1)
+        toolbar.addWidget(self.source_filter)
+        toolbar.addWidget(self.roster_count)
         toolbar.addWidget(refresh)
         root.addLayout(toolbar)
+        for signal in (self.proxy.rowsInserted, self.proxy.rowsRemoved, self.proxy.modelReset, self.proxy.layoutChanged):
+            signal.connect(lambda *args: QTimer.singleShot(0, self._update_roster_count))
+        self.search.textChanged.connect(self._update_roster_count)
+        self.source_filter.currentIndexChanged.connect(self._update_roster_count)
+        self._update_roster_count()
         actions_row = QHBoxLayout()
         actions_row.setSpacing(8)
         self.person_actions = {}
@@ -468,6 +492,10 @@ class PersonsWorkbench(QWidget):
     def _focus_search(self):
         self.search.setFocus(Qt.FocusReason.ShortcutFocusReason)
         self.search.selectAll()
+
+    def _update_roster_count(self, *_args):
+        visible, total = self.proxy.rowCount(), self.model.rowCount()
+        self.roster_count.setText(f"{visible} of {total} people" if visible != total else f"{total} people")
 
     @staticmethod
     def _scroll_section(widget):
