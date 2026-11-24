@@ -38,7 +38,7 @@ class WorkbenchImageManagementTests(unittest.TestCase):
 
     def test_worker_uses_transactional_service_api(self):
         applying = source("person_workbench_images.py", "WorkbenchImageEditor", "_apply")
-        self.assertIn("EditPersonImagesWorker(self.service, name, additions, removals)", applying)
+        self.assertIn("_CheckedImageWorker(self.service, name, additions, removals, expected_paths, expected_snapshot)", applying)
         for route in ("self.worker.progress.connect(self._forward_progress)",
                       "self.worker.log_message.connect(self._forward_log)",
                       "self.worker.finished.connect(self._store_result)",

@@ -31,7 +31,7 @@ class KBOnlyManagementTests(unittest.TestCase):
         for action in ("rename", "remove", "images", "reencode"):
             self.assertFalse(policy.person_action_allowed(action, "Ada", missing)[0])
         for action in ("images", "reencode"):
-            self.assertFalse(policy.person_action_allowed(action, "Ada", kb_only)[0])
+            self.assertTrue(policy.person_action_allowed(action, "Ada", kb_only)[0])
 
     def test_db_backed_actions_preserved(self):
         state = SimpleNamespace(database_record_exists=True, has_recognition_state=True, image_count=2)
@@ -45,7 +45,7 @@ class KBOnlyManagementTests(unittest.TestCase):
         self.assertIn("self.rename_photos.setEnabled(record is not None", opening)
         self.assertIn("rename_photos and (not original_state.database_record_exists)", review)
         self.assertIn("current_evidence != original_evidence", review)
-        self.assertIn("confirmed_path, original_evidence)", review)
+        self.assertIn("self.original_photo_path, original_evidence)", review)
 
     def test_remove_confirms_exact_state_and_preserves_external_folder(self):
         opening = method("person_workbench_remove.py", "WorkbenchRemovePanel", "open_for")

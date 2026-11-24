@@ -51,14 +51,15 @@ class ManagementIntegrationContractTests(unittest.TestCase):
         ast.parse(cls.main)
 
     def test_action_target_matches_roster_selection(self):
-        self.assertIn('self.action_target.setText(f"Managing: {name}"', self.workbench)
+        self.assertIn('f"Managing: {name}"', self.workbench)
+        self.assertIn('KB-only profile:', self.workbench)
         self.assertIn('self.person_actions.items()', self.workbench)
         self.assertIn('person_action_allowed(action, name, state)', self.workbench)
 
     def test_dispatch_revalidates_identity(self):
         self.assertIn('name != self.person_context.name', self.main)
         self.assertIn('name != selected', self.main)
-        self.assertIn('self.person_db.get_by_name(name) is None', self.main)
+        self.assertIn('state.database_record_exists or state.has_recognition_state', self.main)
 
     def test_image_update_preserves_person(self):
         self.assertIn('self.person_context.select(name)', self.main)

@@ -8,7 +8,7 @@ import pytest
 from PIL import Image
 from PyQt6 import QtCore
 from hdw_dedup_engine import DedupConfig, execute_moves, load_settings
-import dedup_worker
+from hdw_person_lens import dedup_worker
 
 EXCLUSIONS = ('_legacy_import', 'batch_sessions', 'dedup_reports',
               'gallery_reports', 'kb_compatibility')

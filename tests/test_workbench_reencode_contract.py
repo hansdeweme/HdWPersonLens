@@ -32,7 +32,7 @@ class ReencodingConsolidationTests(unittest.TestCase):
 
     def test_dispatch_validates_context_and_source_before_worker(self):
         dispatch = source("recognition_gui.py", "MainWindow", "_on_workbench_reencode_requested")
-        for condition in ("selected != name", "self.person_context.name != name", "self.person_db.get_by_name(name) is None",
+        for condition in ("selected != name", "self.person_context.name != name", "not state.has_recognition_state",
                           "source_snapshot(paths) != confirmed_snapshot", "thread.isRunning()"):
             with self.subTest(condition=condition): self.assertIn(condition, dispatch)
         self.assertIn("self._start_reencode_worker(names=[name], confirmed_snapshot=confirmed_snapshot)", dispatch)
@@ -58,7 +58,7 @@ class ReencodingConsolidationTests(unittest.TestCase):
     def test_prior_remove_target_and_activity_safeguards_survive(self):
         removed = source("person_workbench_remove.py", "WorkbenchRemovePanel", "_review")
         self.assertIn("confirmed_path = self.original_photo_path", removed)
-        self.assertIn("self.remove_requested.emit(name, delete_photos, confirmed_path)", removed)
+        self.assertIn("self.remove_requested.emit(name, delete_photos, confirmed_path, original_evidence)", removed)
         main = (ROOT / "recognition_gui.py").read_text(encoding="utf-8")
         self.assertIn("self.persons_workbench.encoding_activity.connect(self.display_message)", main)
 

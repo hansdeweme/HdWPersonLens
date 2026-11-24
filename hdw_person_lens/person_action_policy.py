@@ -7,7 +7,7 @@ ACTION_LABELS = {"add": "Add Person", "rename": "Rename", "remove": "Remove", "i
 def person_action_allowed(action: str, name: str, state) -> tuple[bool, str]:
     if action == "add": return True, ""
     if action not in ACTION_LABELS: return False, "Unknown person action."
-    if not name or state is None or not state.database_record_exists:
+    if not name or state is None or not (state.database_record_exists or state.has_recognition_state):
         return False, "The selected person is no longer available. Refresh and try again."
     if action in ("images", "reencode") and not state.has_recognition_state:
         return False, f"No recognition profile is available for '{name}'."

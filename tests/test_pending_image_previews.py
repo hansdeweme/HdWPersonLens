@@ -43,7 +43,7 @@ class PendingPreviewContractTests(unittest.TestCase):
 
     def test_preview_does_not_change_transaction_inputs(self):
         applying = method("WorkbenchImageEditor", "_apply")
-        self.assertIn("EditPersonImagesWorker(self.service, name, additions, removals)", applying)
+        self.assertIn("_CheckedImageWorker(self.service, name, additions, removals, expected_paths, expected_snapshot)", applying)
         self.assertNotIn("_thumb_cache", applying)
 
 

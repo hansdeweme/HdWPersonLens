@@ -221,6 +221,10 @@ QWidget#activityTab QTableWidget#activityOperations {
     selection-background-color: #254b6a; selection-color: #ffffff;
 }
 QWidget#activityTab QTableWidget#activityOperations:focus { border-color: #90cdf4; }
+QWidget#activityTab QLabel#activityOutcome[operationError="true"] {
+    color: #feb2b2; background: #4a222b; border: 1px solid #b84c59;
+    border-radius: 5px; padding: 4px 8px;
+}
 QWidget#activityTab QProgressBar {
     background: #1a202c; border: 1px solid #384658; border-radius: 5px;
     color: #edf2f7; text-align: center; min-height: 16px;

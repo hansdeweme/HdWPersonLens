@@ -1,0 +1,57 @@
+{
+  "add": {
+    "qt": {"status": "partial", "notes": "v1.9.3: temporary tab hidden until opened; native Qt guard and lifecycle checks reported."},
+    "db_backed": {"status": "partial", "notes": "Guided Add path exists, but a complete disposable DB/KB creation acceptance is not recorded."},
+    "kb_only": {"status": "not_recorded", "notes": "Verify collisions with existing recognition-only names and no unintended DB placeholder."},
+    "cancellation": {"status": "partial", "notes": "v1.9.3: shutdown, busy state and retargeting during confirmation blocked dispatch; verify ordinary Cancel."},
+    "failure": {"status": "not_recorded", "notes": "Inject creation failure and verify Activity error and token cleanup."},
+    "rollback": {"status": "not_recorded", "notes": "Fail after one intermediate creation stage; compare DB/KB/bank checksums with baseline."},
+    "context": {"status": "partial", "notes": "v1.9.3: retarget guard reported; test stale/filtered context through principal menu."},
+    "freshness": {"status": "not_recorded", "notes": "Change target-name availability during confirmation and require rejection."},
+    "activity": {"status": "not_recorded", "notes": "Verify start, progress, result and failure display for this native action."}
+  },
+  "rename": {
+    "qt": {"status": "partial", "notes": "v1.9.1: native Qt signal forwarding and canonical result-name checks reported."},
+    "db_backed": {"status": "partial", "notes": "Canonical-name result synchronized in tests; verify actual disposable DB/KB rename."},
+    "kb_only": {"status": "partial", "notes": "v1.9.8 recognition-only Rename supported; full native transaction not independently documented."},
+    "cancellation": {"status": "not_recorded", "notes": "Cancel confirmation and verify no names, folders or bank keys change."},
+    "failure": {"status": "not_recorded", "notes": "Inject rename failure and verify Activity and progress cleanup."},
+    "rollback": {"status": "not_recorded", "notes": "Inject failure between DB, KB and bank renames; verify original state restored."},
+    "context": {"status": "partial", "notes": "Canonical result name and dispatch context guards reported; exercise stale/filtered menu path."},
+    "freshness": {"status": "partial", "notes": "v1.9.8 added source/bank revisions beyond counts; test mutation while confirmation is open."},
+    "activity": {"status": "partial", "notes": "v1.9.1 restored controlled-encoding forwarding and rename completion reporting; verify all rename outcomes."}
+  },
+  "remove": {
+    "qt": {"status": "partial", "notes": "v1.9.4: native Qt confirmation-path and default-preservation checks reported."},
+    "db_backed": {"status": "not_recorded", "notes": "No actual removal was performed in v1.9.4 smoke test; use disposable fixtures."},
+    "kb_only": {"status": "partial", "notes": "v1.9.8 recognition-only Remove supported; full destructive flow needs disposable acceptance."},
+    "cancellation": {"status": "partial", "notes": "Confirmation path mismatch rejected; test user Cancel with all removal options."},
+    "failure": {"status": "not_recorded", "notes": "Inject service failure and verify Activity and progress token release."},
+    "rollback": {"status": "not_recorded", "notes": "Verify partial-failure behavior for DB, KB, bank and optional external folder."},
+    "context": {"status": "partial", "notes": "v1.9.4 immutable target path guard; exercise stale selection and menu context."},
+    "freshness": {"status": "partial", "notes": "v1.9.4 confirmed path snapshot and v1.9.8 revision guards; test post-confirmation mutations."},
+    "activity": {"status": "not_recorded", "notes": "Verify precise success, partial failure and cancellation status messages."}
+  },
+  "images": {
+    "qt": {"status": "partial", "notes": "v1.9.2 and v1.9.6: Qt panel and 72px background thumbnails, cancellation, shutdown checks."},
+    "db_backed": {"status": "partial", "notes": "v1.9.2: empty-profile addition and last-image protection tested; verify actual persisted edits."},
+    "kb_only": {"status": "partial", "notes": "v1.9.9 KB-only image management package validated; verify native persisted edit on disposable profile."},
+    "cancellation": {"status": "partial", "notes": "v1.9.3 shutdown/busy/retarget blocks worker launch; test normal confirmation Cancel."},
+    "failure": {"status": "not_recorded", "notes": "Inject update failure and verify Activity and token cleanup."},
+    "rollback": {"status": "not_recorded", "notes": "Fail during update and compare profile, source paths and embeddings to baseline."},
+    "context": {"status": "partial", "notes": "v1.9.2 checked context/DB presence before and after confirmation; check KB-only current-context path."},
+    "freshness": {"status": "partial", "notes": "v1.9.9 single image-list snapshot fixed double-read race; mutate file and membership during confirmation."},
+    "activity": {"status": "not_recorded", "notes": "Verify start, progress, successful update and failure reporting."}
+  },
+  "reencode": {
+    "qt": {"status": "partial", "notes": "v1.9.5 native confirmation and routing tests reported; full focus/shutdown coverage not recorded."},
+    "db_backed": {"status": "partial", "notes": "v1.9.5 unchanged snapshot proceeded; verify persisted bank provenance on disposable DB-backed person."},
+    "kb_only": {"status": "partial", "notes": "v1.9.9 KB-only re-encoding route validated; verify persisted bank and no DB placeholder."},
+    "cancellation": {"status": "partial", "notes": "v1.9.5 confirmation cancellation passed native Qt; verify no bank writes."},
+    "failure": {"status": "partial", "notes": "Queued source mismatch rejected; verify actual worker failure outcome and token release."},
+    "rollback": {"status": "partial", "notes": "v1.7.1 controlled encoding rollback passed, but not a full v1.9.9 native all-image workflow test."},
+    "context": {"status": "partial", "notes": "v1.9.5 person/snapshot frozen at confirmation; verify filtered and retargeted principal-menu route."},
+    "freshness": {"status": "partial", "notes": "v1.9.5 immutable confirmed snapshot passed into worker and rechecked under lock; queued changes rejected."},
+    "activity": {"status": "not_recorded", "notes": "Verify progress ownership, successful outcome, stale rejection and failure display."}
+  }
+}

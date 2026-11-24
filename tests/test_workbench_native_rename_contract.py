@@ -33,15 +33,16 @@ class NativeRenameContractTests(unittest.TestCase):
     def test_confirmation_captures_selected_person_and_photo_options(self):
         review = method("person_workbench_rename.py", "WorkbenchRenamePanel", "_review")
         source = ast.unparse(review)
-        self.assertIn("record is None", source)
+        self.assertIn("original_state.database_record_exists", source)
+        self.assertIn("current_evidence != original_evidence", source)
         self.assertIn("self.original_photo_path", source)
-        self.assertIn("self.rename_requested.emit(old_name, new_name, rename_photos, custom_path or None, self.original_photo_path)", source)
+        self.assertIn("self.rename_requested.emit(old_name, new_name, rename_photos, custom_path or None, self.original_photo_path, original_evidence)", source)
         self.assertIn("QMessageBox.StandardButton.No", source)
 
     def test_dispatch_revalidates_context_and_record(self):
         execute = method("recognition_gui.py", "MainWindow", "_on_workbench_rename_requested")
         source = ast.unparse(execute)
-        for condition in ("selected != old_name", "self.person_context.name != old_name", "record is None",
+        for condition in ("selected != old_name", "self.person_context.name != old_name", "current_evidence != confirmed_state",
                           "!= expected_photo_path", "person_action_allowed('rename', old_name, state)"):
             with self.subTest(condition=condition): self.assertIn(condition, source)
         self.assertIn("return", source)

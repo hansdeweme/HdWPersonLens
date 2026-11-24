@@ -61,7 +61,7 @@ class RecognitionOnlyRosterTests(unittest.TestCase):
 
     def test_management_keeps_database_guard(self):
         dispatch = method("recognition_gui.py", "MainWindow", "_on_workbench_person_action")
-        self.assertIn("self.person_db.get_by_name(name) is None", dispatch)
+        self.assertIn("state.database_record_exists or state.has_recognition_state", dispatch)
         self.assertIn("person_action_allowed(action, name, state)", dispatch)
 
 

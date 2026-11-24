@@ -87,10 +87,10 @@ class ManagementContractInventoryTests(unittest.TestCase):
         gui = methods(PACKAGE / "recognition_gui.py", "MainWindow")
         dispatch = gui["_on_workbench_person_action"]
         calls = called_methods(dispatch)
-        for required in ("_current_person_name", "get_by_name", "get_person_state", "open_reencode"):
+        for required in ("_current_person_name", "get_person_state", "open_reencode"):
             with self.subTest(call=required): self.assertIn(required, calls)
         self.assertTrue(rejection_guard(dispatch, ("name != selected", "name != self.person_context.name",
-                                                   "self.person_db.get_by_name(name) is None")))
+                                                   "not (state.database_record_exists or state.has_recognition_state)")))
         self.assertTrue(rejection_guard(dispatch, ("not allowed",)))
         self.assertIn("open_image_editor", calls)
         editor_methods = methods(PACKAGE / "person_workbench_images.py", "WorkbenchImageEditor")
@@ -104,11 +104,11 @@ class ManagementContractInventoryTests(unittest.TestCase):
         self.assertTrue(rejection_guard(applying, ("self._stopping", "self.busy", "name != self.person_name",
                                                     "not self._context_current(name)")))
         for required in ("workbench._current_person_name() == name", "context.name == name",
-                         "person_db.get_by_name(name) is not None", "self.gallery.person_name == name"):
+                         "state.database_record_exists == self._had_db_record", "self.gallery.person_name == name"):
             with self.subTest(context_check=required): self.assertIn(required, context)
         reencode = gui["_on_workbench_reencode_requested"]
         self.assertTrue(rejection_guard(reencode, ("selected != name", "self.person_context.name != name",
-                                                   "self.person_db.get_by_name(name) is None", "not allowed")))
+                                                   "not state.has_recognition_state", "not allowed")))
         self.assertTrue(rejection_guard(reencode, ("source_snapshot(paths) != confirmed_snapshot",)))
         start = next(n for n in ast.walk(reencode) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
                      and n.func.attr == "_start_reencode_worker")

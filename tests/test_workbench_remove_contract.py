@@ -30,15 +30,15 @@ class WorkbenchRemoveContractTests(unittest.TestCase):
     def test_external_photo_removal_is_opt_in(self):
         opening = src("person_workbench_remove.py", "WorkbenchRemovePanel", "open_for")
         self.assertIn("self.delete_photos.setChecked(False)", opening)
-        self.assertIn("self.delete_photos.setEnabled(exists)", opening)
+        self.assertIn("self.delete_photos.setEnabled(exists and state.database_record_exists)", opening)
         review = src("person_workbench_remove.py", "WorkbenchRemovePanel", "_review")
         self.assertIn("QMessageBox.StandardButton.No", review)
-        self.assertIn("self.remove_requested.emit(name, delete_photos, confirmed_path)", review)
+        self.assertIn("self.remove_requested.emit(name, delete_photos, confirmed_path, original_evidence)", review)
         self.assertIn("self.original_photo_path != confirmed_path", review)
 
     def test_removal_revalidates_selected_context_and_db(self):
         handler = src("recognition_gui.py", "MainWindow", "_on_workbench_remove_requested")
-        for condition in ("selected != name", "self.person_context.name != name", "record is None",
+        for condition in ("selected != name", "self.person_context.name != name", "current_evidence != confirmed_state",
                           "!= expected_photo_path", "person_action_allowed('remove', name, state)"):
             with self.subTest(condition=condition): self.assertIn(condition, handler)
         self.assertIn("delete_photo_folder and (not os.path.isdir(expected_photo_path))", handler)

@@ -1,0 +1,105 @@
+--- a/hdw_person_lens/personlens_theme.py
++++ b/hdw_person_lens/personlens_theme.py
+@@ -221,6 +221,10 @@
+     selection-background-color: #254b6a; selection-color: #ffffff;
+ }
+ QWidget#activityTab QTableWidget#activityOperations:focus { border-color: #90cdf4; }
++QWidget#activityTab QLabel#activityOutcome[operationError="true"] {
++    color: #feb2b2; background: #4a222b; border: 1px solid #b84c59;
++    border-radius: 5px; padding: 4px 8px;
++}
+ QWidget#activityTab QProgressBar {
+     background: #1a202c; border: 1px solid #384658; border-radius: 5px;
+     color: #edf2f7; text-align: center; min-height: 16px;
+--- a/tests/test_management_contract_inventory.py
++++ b/tests/test_management_contract_inventory.py
+@@ -87,10 +87,10 @@
+         gui = methods(PACKAGE / "recognition_gui.py", "MainWindow")
+         dispatch = gui["_on_workbench_person_action"]
+         calls = called_methods(dispatch)
+-        for required in ("_current_person_name", "get_by_name", "get_person_state", "open_reencode"):
++        for required in ("_current_person_name", "get_person_state", "open_reencode"):
+             with self.subTest(call=required): self.assertIn(required, calls)
+         self.assertTrue(rejection_guard(dispatch, ("name != selected", "name != self.person_context.name",
+-                                                   "self.person_db.get_by_name(name) is None")))
++                                                   "not (state.database_record_exists or state.has_recognition_state)")))
+         self.assertTrue(rejection_guard(dispatch, ("not allowed",)))
+         self.assertIn("open_image_editor", calls)
+         editor_methods = methods(PACKAGE / "person_workbench_images.py", "WorkbenchImageEditor")
+@@ -104,11 +104,11 @@
+         self.assertTrue(rejection_guard(applying, ("self._stopping", "self.busy", "name != self.person_name",
+                                                     "not self._context_current(name)")))
+         for required in ("workbench._current_person_name() == name", "context.name == name",
+-                         "person_db.get_by_name(name) is not None", "self.gallery.person_name == name"):
++                         "state.database_record_exists == self._had_db_record", "self.gallery.person_name == name"):
+             with self.subTest(context_check=required): self.assertIn(required, context)
+         reencode = gui["_on_workbench_reencode_requested"]
+         self.assertTrue(rejection_guard(reencode, ("selected != name", "self.person_context.name != name",
+-                                                   "self.person_db.get_by_name(name) is None", "not allowed")))
++                                                   "not state.has_recognition_state", "not allowed")))
+         self.assertTrue(rejection_guard(reencode, ("source_snapshot(paths) != confirmed_snapshot",)))
+         start = next(n for n in ast.walk(reencode) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                      and n.func.attr == "_start_reencode_worker")
+--- a/tests/test_workbench_native_rename_contract.py
++++ b/tests/test_workbench_native_rename_contract.py
+@@ -33,15 +33,16 @@
+     def test_confirmation_captures_selected_person_and_photo_options(self):
+         review = method("person_workbench_rename.py", "WorkbenchRenamePanel", "_review")
+         source = ast.unparse(review)
+-        self.assertIn("record is None", source)
++        self.assertIn("original_state.database_record_exists", source)
++        self.assertIn("current_evidence != original_evidence", source)
+         self.assertIn("self.original_photo_path", source)
+-        self.assertIn("self.rename_requested.emit(old_name, new_name, rename_photos, custom_path or None, self.original_photo_path)", source)
++        self.assertIn("self.rename_requested.emit(old_name, new_name, rename_photos, custom_path or None, self.original_photo_path, original_evidence)", source)
+         self.assertIn("QMessageBox.StandardButton.No", source)
+ 
+     def test_dispatch_revalidates_context_and_record(self):
+         execute = method("recognition_gui.py", "MainWindow", "_on_workbench_rename_requested")
+         source = ast.unparse(execute)
+-        for condition in ("selected != old_name", "self.person_context.name != old_name", "record is None",
++        for condition in ("selected != old_name", "self.person_context.name != old_name", "current_evidence != confirmed_state",
+                           "!= expected_photo_path", "person_action_allowed('rename', old_name, state)"):
+             with self.subTest(condition=condition): self.assertIn(condition, source)
+         self.assertIn("return", source)
+--- a/tests/test_workbench_reencode_contract.py
++++ b/tests/test_workbench_reencode_contract.py
+@@ -32,7 +32,7 @@
+ 
+     def test_dispatch_validates_context_and_source_before_worker(self):
+         dispatch = source("recognition_gui.py", "MainWindow", "_on_workbench_reencode_requested")
+-        for condition in ("selected != name", "self.person_context.name != name", "self.person_db.get_by_name(name) is None",
++        for condition in ("selected != name", "self.person_context.name != name", "not state.has_recognition_state",
+                           "source_snapshot(paths) != confirmed_snapshot", "thread.isRunning()"):
+             with self.subTest(condition=condition): self.assertIn(condition, dispatch)
+         self.assertIn("self._start_reencode_worker(names=[name], confirmed_snapshot=confirmed_snapshot)", dispatch)
+@@ -58,7 +58,7 @@
+     def test_prior_remove_target_and_activity_safeguards_survive(self):
+         removed = source("person_workbench_remove.py", "WorkbenchRemovePanel", "_review")
+         self.assertIn("confirmed_path = self.original_photo_path", removed)
+-        self.assertIn("self.remove_requested.emit(name, delete_photos, confirmed_path)", removed)
++        self.assertIn("self.remove_requested.emit(name, delete_photos, confirmed_path, original_evidence)", removed)
+         main = (ROOT / "recognition_gui.py").read_text(encoding="utf-8")
+         self.assertIn("self.persons_workbench.encoding_activity.connect(self.display_message)", main)
+ 
+--- a/tests/test_workbench_remove_contract.py
++++ b/tests/test_workbench_remove_contract.py
+@@ -30,15 +30,15 @@
+     def test_external_photo_removal_is_opt_in(self):
+         opening = src("person_workbench_remove.py", "WorkbenchRemovePanel", "open_for")
+         self.assertIn("self.delete_photos.setChecked(False)", opening)
+-        self.assertIn("self.delete_photos.setEnabled(exists)", opening)
++        self.assertIn("self.delete_photos.setEnabled(exists and state.database_record_exists)", opening)
+         review = src("person_workbench_remove.py", "WorkbenchRemovePanel", "_review")
+         self.assertIn("QMessageBox.StandardButton.No", review)
+-        self.assertIn("self.remove_requested.emit(name, delete_photos, confirmed_path)", review)
++        self.assertIn("self.remove_requested.emit(name, delete_photos, confirmed_path, original_evidence)", review)
+         self.assertIn("self.original_photo_path != confirmed_path", review)
+ 
+     def test_removal_revalidates_selected_context_and_db(self):
+         handler = src("recognition_gui.py", "MainWindow", "_on_workbench_remove_requested")
+-        for condition in ("selected != name", "self.person_context.name != name", "record is None",
++        for condition in ("selected != name", "self.person_context.name != name", "current_evidence != confirmed_state",
+                           "!= expected_photo_path", "person_action_allowed('remove', name, state)"):
+             with self.subTest(condition=condition): self.assertIn(condition, handler)
+         self.assertIn("delete_photo_folder and (not os.path.isdir(expected_photo_path))", handler)

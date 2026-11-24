@@ -40,6 +40,7 @@ from .person_db_gui           import PersonDbEditorWidget
 from .persons_workbench       import PersonsWorkbench
 from .person_context          import PersonContext
 from .person_action_policy    import ACTION_LABELS, person_action_allowed
+from .person_management_evidence import person_revision
 from .kb_reference_recommendations import source_snapshot
 from .person_service          import PersonService, ReencodeBatchResult, PersonConflictError, PersonNotFoundError, PersonServiceError
 from .knowledge_workers       import ReencodePersonsWorker
@@ -367,17 +368,25 @@ class MainWindow(QMainWindow):
             status="Close the application",                         key="act_quit")        
         # ---------------- Manage Persons ----------------
         m = mb.addMenu("Manage Persons")
-        act(m, "Add New Person…", self.add_new_person,  shortcut="Ctrl+N",     tip="Add a new person to the knowledge base", 
-                    status="Create person folder, add images, encode and update encodings",  key="act_add_person")
-        act(m, "Rename Person…", self.rename_person,  shortcut="Ctrl+R",     tip="Rename an existing person",
-                    status="Renames folder and updates name labels in encodings",            key="act_rename_person")
-        act(m, "Remove Person…", self.remove_person,    shortcut="Ctrl+Delete", tip="Remove a person from the knowledge base",
-                    status="Deletes folder and removes their encodings",                     key="act_remove_person")
+        act(m, "Open Persons Workbench…", self.show_persons_workbench, tip="Browse and manage DB and KB-only persons")
+        act(m, "Add New Person…", lambda: self.open_workbench_management("add"), shortcut="Ctrl+N",
+            tip="Create a recognition profile in Persons Workbench", key="act_add_person")
+        act(m, "Rename Selected Person…", lambda: self.open_workbench_management("rename"), shortcut="Ctrl+R",
+            tip="Review a selected person's KB, encoding and optional DB rename", key="act_rename_person")
+        act(m, "Remove Selected Person…", lambda: self.open_workbench_management("remove"), shortcut="Ctrl+Delete",
+            tip="Review full removal of the selected person", key="act_remove_person")
         act(m, "", None, sep=True)
-        act(m, "Re-encode Person…", self.reencode_single_person, shortcut="Ctrl+Shift+R", tip="Rebuild encodings for a single person",
-                    status="Clears old vectors and re-encodes all images for that person",   key="act_reencode_person")
-        act(m, "Edit Person Images…", self.edit_person_images, shortcut="Ctrl+E", tip="Add/remove images for a person",
-                    status="Opens an editor for a person's images and triggers re-encoding if needed", key="act_edit_person_images")
+        act(m, "Re-encode Selected Person…", lambda: self.open_workbench_management("reencode"), shortcut="Ctrl+Shift+R",
+            tip="Choose conventional or controlled encoding in Persons Workbench", key="act_reencode_person")
+        act(m, "Edit Selected Person Images…", lambda: self.open_workbench_management("images"), shortcut="Ctrl+E",
+            tip="Stage and review KB image changes in Persons Workbench", key="act_edit_person_images")
+        act(m, "", None, sep=True)
+        legacy = m.addMenu("Advanced / Legacy Tools")
+        act(legacy, "Legacy Add Person Dialog…", self.add_new_person, tip="Original recognition-profile creation dialog")
+        act(legacy, "Legacy Rename Person Dialog…", self.rename_person, tip="Original rename dialog")
+        act(legacy, "Legacy Remove Person Dialog…", self.remove_person, tip="Original full-removal dialog")
+        act(legacy, "Legacy Edit Images Dialog…", self.edit_person_images, tip="Original image-management dialog")
+        act(legacy, "Legacy Re-encode Person Dialog…", self.reencode_single_person, tip="Original all-image encoding dialog")
         # ---------------- Query Persons ----------------
         m = mb.addMenu("Query Persons")
         act(m, "Find Lookalikes…", self.find_lookalikes, shortcut="Ctrl+L",    tip="Find visually similar persons",
@@ -489,6 +498,29 @@ class MainWindow(QMainWindow):
     def show_persons_workbench(self) -> None:
         """Navigate to the integrated roster without restarting any KB analyses."""
         self.main_tabs.setCurrentWidget(self.persons_workbench)
+
+    def open_workbench_management(self, action: str) -> None:
+        """Route principal menu actions to the contextual Workbench, never an unverified row."""
+        if action not in ACTION_LABELS: return
+        name = self.person_context.name
+        if action != "add":
+            # Check visibility before tab synchronization can clear the filter.
+            workbench = self.persons_workbench
+            row = next((row for row, record in enumerate(workbench.model.records)
+                        if record.get("personName") == name), None)
+            if not name or row is None or not workbench.proxy.mapFromSource(workbench.model.index(row, 1)).isValid():
+                QMessageBox.warning(self, ACTION_LABELS[action], "Select a current, visible person in Persons Workbench before continuing.")
+                return
+        self.show_persons_workbench()
+        if action != "add":
+            if self.person_context.name != name:
+                QMessageBox.warning(self, ACTION_LABELS[action], "The active person changed during navigation. Review the selection again.")
+                return
+            if (not self.persons_workbench.select_person(name) or self.person_context.name != name or
+                    self.persons_workbench._current_person_name() != name):
+                QMessageBox.warning(self, ACTION_LABELS[action], "Select a current person in Persons Workbench before continuing.")
+                return
+        self.persons_workbench._request_person_action(action)
 
     def show_activity(self) -> None:
         """Expose existing operation progress and logs without clearing them."""
@@ -1572,15 +1604,20 @@ class MainWindow(QMainWindow):
             self.persons_workbench.refresh(select_name=new_name)
 
     def _on_workbench_rename_requested(self, old_name: str, new_name: str, rename_photos: bool,
-                                       new_photo_path: object, expected_photo_path: str) -> None:
+                                       new_photo_path: object, expected_photo_path: str, confirmed_state: object) -> None:
         """Revalidate a confirmed Workbench rename immediately before invoking PersonService."""
         selected = self.persons_workbench._current_person_name()
         record = self.person_db.get_by_name(old_name)
-        if (selected != old_name or self.person_context.name != old_name or record is None or
-                str(record.get("files_path") or "").strip() != expected_photo_path):
-            QMessageBox.warning(self, "Rename Person", "The selected person or its record changed. Refresh and review the rename again.")
+        try: current_evidence = person_revision(self.person_service, old_name)
+        except (OSError, RuntimeError, ValueError) as exc:
+            QMessageBox.warning(self, "Rename Person", str(exc))
             return
         state = self.person_service.get_person_state(old_name)
+        if (selected != old_name or self.person_context.name != old_name or current_evidence != confirmed_state or
+                str((record or {}).get("files_path") or "").strip() != expected_photo_path or
+                (rename_photos and not state.database_record_exists)):
+            QMessageBox.warning(self, "Rename Person", "The selected person or its record changed. Refresh and review the rename again.")
+            return
         allowed, reason = person_action_allowed("rename", old_name, state)
         if not allowed:
             QMessageBox.warning(self, "Rename Person", reason)
@@ -1613,15 +1650,20 @@ class MainWindow(QMainWindow):
         if hasattr(self, "persons_workbench"):
             self.persons_workbench.refresh()
 
-    def _on_workbench_remove_requested(self, name: str, delete_photo_folder: bool, expected_photo_path: str) -> None:
+    def _on_workbench_remove_requested(self, name: str, delete_photo_folder: bool, expected_photo_path: str, confirmed_state: object) -> None:
         """Apply confirmed full removal after checking the Workbench's current selected identity."""
         selected = self.persons_workbench._current_person_name()
         record = self.person_db.get_by_name(name)
-        if (selected != name or self.person_context.name != name or record is None or
-                str(record.get("files_path") or "").strip() != expected_photo_path):
-            QMessageBox.warning(self, "Remove Person", "The selected person or its DB record changed. Refresh and review removal again.")
+        try: current_evidence = person_revision(self.person_service, name)
+        except (OSError, RuntimeError, ValueError) as exc:
+            QMessageBox.warning(self, "Remove Person", str(exc))
             return
         state = self.person_service.get_person_state(name)
+        if (selected != name or self.person_context.name != name or current_evidence != confirmed_state or
+                str((record or {}).get("files_path") or "").strip() != expected_photo_path or
+                (delete_photo_folder and not state.database_record_exists)):
+            QMessageBox.warning(self, "Remove Person", "The selected person or its DB record changed. Refresh and review removal again.")
+            return
         allowed, reason = person_action_allowed("remove", name, state)
         if not allowed:
             QMessageBox.warning(self, "Remove Person", reason)
@@ -1661,10 +1703,11 @@ class MainWindow(QMainWindow):
             return
         if action != "add":
             selected = self.persons_workbench._current_person_name()
-            if name != selected or name != self.person_context.name or self.person_db.get_by_name(name) is None:
+            state = self.person_service.get_person_state(name)
+            if (name != selected or name != self.person_context.name or
+                    not (state.database_record_exists or state.has_recognition_state)):
                 QMessageBox.warning(self, ACTION_LABELS[action], "The active person changed or is no longer available. Refresh the Workbench and retry.")
                 return
-            state = self.person_service.get_person_state(name)
             allowed, reason = person_action_allowed(action, name, state)
             if not allowed:
                 QMessageBox.warning(self, ACTION_LABELS[action], reason)
@@ -1689,7 +1732,7 @@ class MainWindow(QMainWindow):
         selected = self.persons_workbench._current_person_name()
         state = self.person_service.get_person_state(name)
         allowed, reason = person_action_allowed("reencode", name, state)
-        if (selected != name or self.person_context.name != name or self.person_db.get_by_name(name) is None or
+        if (selected != name or self.person_context.name != name or not state.has_recognition_state or
                 self.persons_workbench.reencode_panel.person_name != name or not allowed):
             QMessageBox.warning(self, "Re-encode", reason or "The active person changed. Review the request again.")
             return

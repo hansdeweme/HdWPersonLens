@@ -3,11 +3,12 @@
 import os
 from pathlib import Path
 
-from PyQt6.QtCore import QObject, QRunnable, QSize, QThread, QThreadPool, QTimer, Qt, pyqtSignal
+from PyQt6.QtCore import QObject, QRunnable, QSize, QThread, QThreadPool, QTimer, Qt, pyqtSignal, pyqtSlot
 from PyQt6.QtGui import QColor, QIcon, QImage, QImageReader, QPixmap
 from PyQt6.QtWidgets import QFileDialog, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMessageBox, QPushButton, QVBoxLayout, QWidget
 
 from .person_management_diags import EditPersonImagesWorker
+from .kb_reference_recommendations import source_snapshot
 
 
 def path_key(path):
@@ -45,6 +46,28 @@ class _ThumbJob(QRunnable):
         self.signals.loaded.emit(self.job_id, self.generation, self.key, self.signature, image)
 
 
+class _CheckedImageWorker(EditPersonImagesWorker):
+    """Validate confirmed inputs under the same service lock as the transaction."""
+
+    def __init__(self, service, name, additions, removals, expected_paths, expected_snapshot):
+        super().__init__(service, name, additions, removals)
+        self.expected_paths, self.expected_snapshot = tuple(expected_paths), expected_snapshot
+
+    @pyqtSlot()
+    def run(self):
+        try:
+            with self.person_service._operation_lock:
+                current = self.person_service.get_person_image_paths(self.name)
+                if tuple(current) != self.expected_paths or source_snapshot([*current, *self.add_images]) != self.expected_snapshot:
+                    self.error.emit("KB images changed while the update was queued; review the proposed changes again.")
+                    self.completed.emit()
+                    return
+                super().run()
+        except Exception as exc:
+            self.error.emit(str(exc) or "Image source validation failed")
+            self.completed.emit()
+
+
 class WorkbenchImageEditor(QWidget):
     images_updated = pyqtSignal(str, int, int)
 
@@ -52,6 +75,7 @@ class WorkbenchImageEditor(QWidget):
         super().__init__(parent)
         self.service, self.gallery = service, gallery
         self.person_name = ""
+        self._had_db_record = False
         self.existing = {}
         self.additions = {}
         self.removals = {}
@@ -97,6 +121,7 @@ class WorkbenchImageEditor(QWidget):
     def set_person(self, name: str, paths):
         if self.busy or self.has_changes(): return False
         self.person_name = name
+        self._had_db_record = self.service.get_person_state(name).database_record_exists if name else False
         self.existing = {path_key(path): str(path) for path in paths}
         self.additions.clear()
         self.removals.clear()
@@ -226,11 +251,16 @@ class WorkbenchImageEditor(QWidget):
         if name != self.gallery.person_name:
             QMessageBox.warning(self, "Image Context Changed", "The gallery now shows another person. Review changes again.")
             return
-        latest = {path_key(path): str(path) for path in self.service.get_person_image_paths(name)}
+        expected_paths = tuple(self.service.get_person_image_paths(name))
+        latest = {path_key(path): str(path) for path in expected_paths}
         if latest != self.existing:
             QMessageBox.warning(self, "KB Images Changed", "The KB image list changed externally. Discard and reload before applying edits.")
             return
         additions, removals = list(self.additions.values()), list(self.removals.values())
+        expected_snapshot = source_snapshot([*expected_paths, *additions])
+        if any(size is None for _, size, _ in expected_snapshot):
+            QMessageBox.warning(self, "Image Sources Changed", "One or more source images are missing or inaccessible.")
+            return
         if len(self.existing) - len(removals) + len(additions) < 1:
             QMessageBox.warning(self, "Last KB Image", "At least one KB image must remain.")
             return
@@ -239,7 +269,8 @@ class WorkbenchImageEditor(QWidget):
                                       QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
         if answer != QMessageBox.StandardButton.Yes: return
         if (self._stopping or self.busy or name != self.person_name or not self._context_current(name) or
-                {path_key(path): str(path) for path in self.service.get_person_image_paths(name)} != latest):
+                tuple(self.service.get_person_image_paths(name)) != expected_paths or
+                source_snapshot([*expected_paths, *additions]) != expected_snapshot):
             QMessageBox.warning(self, "KB Images Changed", "The selected person or KB images changed during confirmation.")
             return
         self._result, self._error = None, ""
@@ -250,7 +281,7 @@ class WorkbenchImageEditor(QWidget):
         self._sync_controls()
         self.status.setText("Applying KB image changes and re-encoding…")
         self.thread = QThread(self)
-        self.worker = EditPersonImagesWorker(self.service, name, additions, removals)
+        self.worker = _CheckedImageWorker(self.service, name, additions, removals, expected_paths, expected_snapshot)
         self.worker.moveToThread(self.thread)
         self.thread.started.connect(self.worker.run)
         self.worker.progress.connect(self._forward_progress)
@@ -268,8 +299,9 @@ class WorkbenchImageEditor(QWidget):
         workbench = getattr(window, "persons_workbench", None)
         context = getattr(window, "person_context", None)
         person_db = getattr(window, "person_db", None)
-        return bool(workbench and context and person_db and workbench._current_person_name() == name and
-                    context.name == name and person_db.get_by_name(name) is not None and self.gallery.person_name == name)
+        state = self.service.get_person_state(name)
+        return bool(workbench and context and workbench._current_person_name() == name and context.name == name and
+                    state.has_recognition_state and state.database_record_exists == self._had_db_record and self.gallery.person_name == name)
 
     def _forward_progress(self, value):
         handler = getattr(self.window(), "progress_person_operation", None)

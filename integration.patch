@@ -1,0 +1,578 @@
+--- a/hdw_person_lens/person_action_policy.py
++++ b/hdw_person_lens/person_action_policy.py
+@@ -7,7 +7,7 @@
+ def person_action_allowed(action: str, name: str, state) -> tuple[bool, str]:
+     if action == "add": return True, ""
+     if action not in ACTION_LABELS: return False, "Unknown person action."
+-    if not name or state is None or not state.database_record_exists:
++    if not name or state is None or not (state.database_record_exists or state.has_recognition_state):
+         return False, "The selected person is no longer available. Refresh and try again."
+     if action in ("images", "reencode") and not state.has_recognition_state:
+         return False, f"No recognition profile is available for '{name}'."
+--- a/hdw_person_lens/person_workbench_rename.py
++++ b/hdw_person_lens/person_workbench_rename.py
+@@ -2,10 +2,11 @@
+ 
+ from PyQt6.QtCore import pyqtSignal
+ from PyQt6.QtWidgets import QCheckBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QVBoxLayout
++from .person_management_evidence import person_revision
+ 
+ 
+ class WorkbenchRenamePanel(QGroupBox):
+-    rename_requested = pyqtSignal(str, str, bool, object, str)
++    rename_requested = pyqtSignal(str, str, bool, object, str, object)
+ 
+     def __init__(self, person_service, parent=None):
+         super().__init__("Rename selected person", parent)
+@@ -50,13 +51,15 @@
+ 
+     def open_for(self, name: str) -> bool:
+         record = self.person_service.get_person_record(name)
+-        if not name or record is None: return False
++        state = self.person_service.get_person_state(name) if name else None
++        if not state or not (state.database_record_exists or state.has_recognition_state): return False
+         self.person_name = name
+-        self.original_photo_path = str(record.get("files_path") or "").strip()
++        self.original_photo_path = str((record or {}).get("files_path") or "").strip()
+         self.current_name.setText(name)
+         self.original_path.setText(self.original_photo_path or "—")
+         self.new_name.clear()
+         self.rename_photos.setChecked(False)
++        self.rename_photos.setEnabled(record is not None and bool(self.original_photo_path))
+         self.custom_path.clear()
+         self.custom_path.setEnabled(False)
+         self._update_suggestion()
+@@ -86,6 +89,11 @@
+ 
+     def _review(self):
+         old_name, new_name = self.person_name, self.new_name.text().strip()
++        original_state = self.person_service.get_person_state(old_name)
++        try: original_evidence = person_revision(self.person_service, old_name)
++        except (OSError, RuntimeError, ValueError) as exc:
++            QMessageBox.warning(self, "Rename Source Unavailable", str(exc))
++            return
+         if not new_name:
+             QMessageBox.warning(self, "Invalid Name", "The new name cannot be empty.")
+             self.new_name.setFocus()
+@@ -94,10 +102,13 @@
+             QMessageBox.information(self, "No Change", "The old and new names are the same.")
+             return
+         record = self.person_service.get_person_record(old_name)
+-        if record is None or str(record.get("files_path") or "").strip() != self.original_photo_path:
++        if not (original_state.database_record_exists or original_state.has_recognition_state) or str((record or {}).get("files_path") or "").strip() != self.original_photo_path:
+             QMessageBox.warning(self, "Rename Source Changed", "The selected record changed. Refresh and review the rename again.")
+             return
+         rename_photos = self.rename_photos.isChecked()
++        if rename_photos and not original_state.database_record_exists:
++            QMessageBox.warning(self, "Rename Photos Unavailable", "KB-only profiles have no DB photo-folder reference.")
++            return
+         custom_path = self.custom_path.text().strip() if rename_photos else ""
+         target = (custom_path or self.person_service.suggest_photo_folder(old_name, new_name) or "automatic target path") if rename_photos else ""
+         description = (f"Rename '{old_name}' to '{new_name}'?\n\nThis will update:\n"
+@@ -106,4 +117,14 @@
+         answer = QMessageBox.question(self, "Confirm Rename", description, QMessageBox.StandardButton.Yes |
+                                       QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+         if answer != QMessageBox.StandardButton.Yes: return
+-        self.rename_requested.emit(old_name, new_name, rename_photos, custom_path or None, self.original_photo_path)
++        try: current_evidence = person_revision(self.person_service, old_name)
++        except (OSError, RuntimeError, ValueError) as exc:
++            QMessageBox.warning(self, "Rename Source Unavailable", str(exc))
++            return
++        if (self.person_name != old_name or self.original_photo_path != str((self.person_service.get_person_record(old_name) or {}).get("files_path") or "").strip() or
++                self.new_name.text().strip() != new_name or self.rename_photos.isChecked() != rename_photos or
++                (self.custom_path.text().strip() if rename_photos else "") != custom_path or
++                current_evidence != original_evidence):
++            QMessageBox.warning(self, "Rename Source Changed", "The person or rename options changed during confirmation. Review again.")
++            return
++        self.rename_requested.emit(old_name, new_name, rename_photos, custom_path or None, self.original_photo_path, original_evidence)
+--- a/hdw_person_lens/person_workbench_remove.py
++++ b/hdw_person_lens/person_workbench_remove.py
+@@ -4,10 +4,11 @@
+ 
+ from PyQt6.QtCore import pyqtSignal
+ from PyQt6.QtWidgets import QCheckBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QMessageBox, QPushButton, QVBoxLayout
++from .person_management_evidence import person_revision
+ 
+ 
+ class WorkbenchRemovePanel(QGroupBox):
+-    remove_requested = pyqtSignal(str, bool, str)
++    remove_requested = pyqtSignal(str, bool, str, object)
+ 
+     def __init__(self, service, parent=None):
+         super().__init__("Remove selected person", parent)
+@@ -44,16 +45,17 @@
+ 
+     def open_for(self, name: str) -> bool:
+         record = self.service.get_person_record(name)
+-        if not name or record is None: return False
++        state = self.service.get_person_state(name) if name else None
++        if not state or not (state.database_record_exists or state.has_recognition_state): return False
+         self.person_name = name
+-        self.original_photo_path = str(record.get("files_path") or "").strip()
++        self.original_photo_path = str((record or {}).get("files_path") or "").strip()
+         exists = bool(self.original_photo_path and os.path.isdir(self.original_photo_path))
+         self.name_label.setText(name)
+         self.photo_path.setText(self.original_photo_path or "—")
+         if self.original_photo_path and not exists:
+             self.photo_path.setText(f"{self.original_photo_path}\n(folder does not exist; no external files will be deleted)")
+         self.delete_photos.setChecked(False)
+-        self.delete_photos.setEnabled(exists)
++        self.delete_photos.setEnabled(exists and state.database_record_exists)
+         self.setVisible(True)
+         self.review_button.setFocus()
+         return True
+@@ -71,10 +73,18 @@
+     def _review(self):
+         name, delete_photos = self.person_name, self.delete_photos.isChecked()
+         confirmed_path = self.original_photo_path
++        original_state = self.service.get_person_state(name)
++        try: original_evidence = person_revision(self.service, name)
++        except (OSError, RuntimeError, ValueError) as exc:
++            QMessageBox.warning(self, "Removal Source Unavailable", str(exc))
++            return
+         record = self.service.get_person_record(name)
+-        if record is None or str(record.get("files_path") or "").strip() != confirmed_path:
++        if not (original_state.database_record_exists or original_state.has_recognition_state) or str((record or {}).get("files_path") or "").strip() != confirmed_path:
+             QMessageBox.warning(self, "Removal Source Changed", "The record changed. Refresh and review removal again.")
+             return
++        if delete_photos and not original_state.database_record_exists:
++            QMessageBox.warning(self, "External Photo Folder Unavailable", "KB-only profiles cannot delete an external photo folder.")
++            return
+         if delete_photos and not os.path.isdir(confirmed_path):
+             QMessageBox.warning(self, "External Photo Folder Changed", "The external photo folder is unavailable. Review the removal scope again.")
+             return
+@@ -86,12 +96,17 @@
+                                      QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                                      QMessageBox.StandardButton.No)
+         if answer != QMessageBox.StandardButton.Yes: return
++        try: current_evidence = person_revision(self.service, name)
++        except (OSError, RuntimeError, ValueError) as exc:
++            QMessageBox.warning(self, "Removal Source Unavailable", str(exc))
++            return
+         record = self.service.get_person_record(name)
+-        if (record is None or str(record.get("files_path") or "").strip() != confirmed_path or
++        if (current_evidence != original_evidence or
++                str((record or {}).get("files_path") or "").strip() != confirmed_path or
+                 self.person_name != name or self.original_photo_path != confirmed_path or self.delete_photos.isChecked() != delete_photos):
+             QMessageBox.warning(self, "Removal Source Changed", "The selected record changed during confirmation. Refresh and review again.")
+             return
+         if delete_photos and not os.path.isdir(confirmed_path):
+             QMessageBox.warning(self, "Photo Folder Changed", "External photo folder changed during confirmation.")
+             return
+-        self.remove_requested.emit(name, delete_photos, confirmed_path)
++        self.remove_requested.emit(name, delete_photos, confirmed_path, original_evidence)
+--- a/hdw_person_lens/person_workbench_images.py
++++ b/hdw_person_lens/person_workbench_images.py
+@@ -3,11 +3,12 @@
+ import os
+ from pathlib import Path
+ 
+-from PyQt6.QtCore import QObject, QRunnable, QSize, QThread, QThreadPool, QTimer, Qt, pyqtSignal
++from PyQt6.QtCore import QObject, QRunnable, QSize, QThread, QThreadPool, QTimer, Qt, pyqtSignal, pyqtSlot
+ from PyQt6.QtGui import QColor, QIcon, QImage, QImageReader, QPixmap
+ from PyQt6.QtWidgets import QFileDialog, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMessageBox, QPushButton, QVBoxLayout, QWidget
+ 
+ from .person_management_diags import EditPersonImagesWorker
++from .kb_reference_recommendations import source_snapshot
+ 
+ 
+ def path_key(path):
+@@ -45,6 +46,28 @@
+         self.signals.loaded.emit(self.job_id, self.generation, self.key, self.signature, image)
+ 
+ 
++class _CheckedImageWorker(EditPersonImagesWorker):
++    """Validate confirmed inputs under the same service lock as the transaction."""
++
++    def __init__(self, service, name, additions, removals, expected_paths, expected_snapshot):
++        super().__init__(service, name, additions, removals)
++        self.expected_paths, self.expected_snapshot = tuple(expected_paths), expected_snapshot
++
++    @pyqtSlot()
++    def run(self):
++        try:
++            with self.person_service._operation_lock:
++                current = self.person_service.get_person_image_paths(self.name)
++                if tuple(current) != self.expected_paths or source_snapshot([*current, *self.add_images]) != self.expected_snapshot:
++                    self.error.emit("KB images changed while the update was queued; review the proposed changes again.")
++                    self.completed.emit()
++                    return
++                super().run()
++        except Exception as exc:
++            self.error.emit(str(exc) or "Image source validation failed")
++            self.completed.emit()
++
++
+ class WorkbenchImageEditor(QWidget):
+     images_updated = pyqtSignal(str, int, int)
+ 
+@@ -52,6 +75,7 @@
+         super().__init__(parent)
+         self.service, self.gallery = service, gallery
+         self.person_name = ""
++        self._had_db_record = False
+         self.existing = {}
+         self.additions = {}
+         self.removals = {}
+@@ -97,6 +121,7 @@
+     def set_person(self, name: str, paths):
+         if self.busy or self.has_changes(): return False
+         self.person_name = name
++        self._had_db_record = self.service.get_person_state(name).database_record_exists if name else False
+         self.existing = {path_key(path): str(path) for path in paths}
+         self.additions.clear()
+         self.removals.clear()
+@@ -226,11 +251,16 @@
+         if name != self.gallery.person_name:
+             QMessageBox.warning(self, "Image Context Changed", "The gallery now shows another person. Review changes again.")
+             return
+-        latest = {path_key(path): str(path) for path in self.service.get_person_image_paths(name)}
++        expected_paths = tuple(self.service.get_person_image_paths(name))
++        latest = {path_key(path): str(path) for path in expected_paths}
+         if latest != self.existing:
+             QMessageBox.warning(self, "KB Images Changed", "The KB image list changed externally. Discard and reload before applying edits.")
+             return
+         additions, removals = list(self.additions.values()), list(self.removals.values())
++        expected_snapshot = source_snapshot([*expected_paths, *additions])
++        if any(size is None for _, size, _ in expected_snapshot):
++            QMessageBox.warning(self, "Image Sources Changed", "One or more source images are missing or inaccessible.")
++            return
+         if len(self.existing) - len(removals) + len(additions) < 1:
+             QMessageBox.warning(self, "Last KB Image", "At least one KB image must remain.")
+             return
+@@ -239,7 +269,8 @@
+                                       QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+         if answer != QMessageBox.StandardButton.Yes: return
+         if (self._stopping or self.busy or name != self.person_name or not self._context_current(name) or
+-                {path_key(path): str(path) for path in self.service.get_person_image_paths(name)} != latest):
++                tuple(self.service.get_person_image_paths(name)) != expected_paths or
++                source_snapshot([*expected_paths, *additions]) != expected_snapshot):
+             QMessageBox.warning(self, "KB Images Changed", "The selected person or KB images changed during confirmation.")
+             return
+         self._result, self._error = None, ""
+@@ -250,7 +281,7 @@
+         self._sync_controls()
+         self.status.setText("Applying KB image changes and re-encoding…")
+         self.thread = QThread(self)
+-        self.worker = EditPersonImagesWorker(self.service, name, additions, removals)
++        self.worker = _CheckedImageWorker(self.service, name, additions, removals, expected_paths, expected_snapshot)
+         self.worker.moveToThread(self.thread)
+         self.thread.started.connect(self.worker.run)
+         self.worker.progress.connect(self._forward_progress)
+@@ -268,8 +299,9 @@
+         workbench = getattr(window, "persons_workbench", None)
+         context = getattr(window, "person_context", None)
+         person_db = getattr(window, "person_db", None)
+-        return bool(workbench and context and person_db and workbench._current_person_name() == name and
+-                    context.name == name and person_db.get_by_name(name) is not None and self.gallery.person_name == name)
++        state = self.service.get_person_state(name)
++        return bool(workbench and context and workbench._current_person_name() == name and context.name == name and
++                    state.has_recognition_state and state.database_record_exists == self._had_db_record and self.gallery.person_name == name)
+ 
+     def _forward_progress(self, value):
+         handler = getattr(self.window(), "progress_person_operation", None)
+--- a/hdw_person_lens/person_workbench_reencode.py
++++ b/hdw_person_lens/person_workbench_reencode.py
+@@ -37,7 +37,7 @@
+     def open_for(self, name: str) -> bool:
+         if not name: return False
+         state = self.service.get_person_state(name)
+-        if not state.database_record_exists or not state.has_recognition_state or not state.image_count: return False
++        if not state.has_recognition_state or not state.image_count: return False
+         self.person_name = name
+         self.summary.setText(f"{name} · {state.image_count} KB image(s) · "
+                              f"Current bank: {state.face_encodings} face / {state.body_encodings} body embeddings")
+@@ -50,7 +50,7 @@
+         if not workbench or not context or db is None: return False
+         state = self.service.get_person_state(name)
+         return bool(self.person_name == name and workbench._current_person_name() == name and context.name == name and
+-                    db.get_by_name(name) is not None and state.has_recognition_state and state.image_count)
++                    state.has_recognition_state and state.image_count)
+ 
+     def _review_all_images(self):
+         name = self.person_name
+--- a/hdw_person_lens/persons_workbench.py
++++ b/hdw_person_lens/persons_workbench.py
+@@ -136,7 +136,7 @@
+             values = " ".join(str(value) for value in record.values() if isinstance(value, (str, int, float)))
+             return f"{values} KB-only recognition profile" if record.get("_kb_only") else values
+         if role == Qt.ItemDataRole.ToolTipRole and record.get("_kb_only"):
+-            return "Recognition-only KB profile; no Persons DB record. Profile editing and management require a DB record."
++            return "Recognition-only KB profile; management is available, but Persons DB profile editing requires a DB record."
+         if role == Qt.ItemDataRole.DisplayRole:
+             path = self.columns[index.column()][0]
+             if path == "~portrait":
+@@ -173,11 +173,11 @@
+     person_selected = pyqtSignal(str)
+     portrait_error = pyqtSignal(str)
+     person_action_requested = pyqtSignal(str, str)
+-    rename_requested = pyqtSignal(str, str, bool, object, str)
++    rename_requested = pyqtSignal(str, str, bool, object, str, object)
+     images_updated = pyqtSignal(str, int, int)
+     person_added = pyqtSignal(object)
+     create_db_record_requested = pyqtSignal(str, str)
+-    remove_requested = pyqtSignal(str, bool, str)
++    remove_requested = pyqtSignal(str, bool, str, object)
+     reencode_requested = pyqtSignal(str, object)
+     encoding_activity = pyqtSignal(str)
+ 
+@@ -775,7 +775,7 @@
+     def _update_person_actions(self, name):
+         state = self.person_service.get_person_state(name) if name else None
+         kb_only = bool(state and state.has_recognition_state and not state.database_record_exists)
+-        self.action_target.setText(f"KB-only profile: {name} · inspection only" if kb_only else
++        self.action_target.setText(f"KB-only profile: {name} · KB management available" if kb_only else
+                                    f"Managing: {name}" if name else "No person selected")
+         for action, button in self.person_actions.items():
+             allowed, reason = person_action_allowed(action, name, state)
+--- a/hdw_person_lens/recognition_gui.py
++++ b/hdw_person_lens/recognition_gui.py
+@@ -40,6 +40,7 @@
+ from .persons_workbench       import PersonsWorkbench
+ from .person_context          import PersonContext
+ from .person_action_policy    import ACTION_LABELS, person_action_allowed
++from .person_management_evidence import person_revision
+ from .kb_reference_recommendations import source_snapshot
+ from .person_service          import PersonService, ReencodeBatchResult, PersonConflictError, PersonNotFoundError, PersonServiceError
+ from .knowledge_workers       import ReencodePersonsWorker
+@@ -1603,15 +1604,20 @@
+             self.persons_workbench.refresh(select_name=new_name)
+ 
+     def _on_workbench_rename_requested(self, old_name: str, new_name: str, rename_photos: bool,
+-                                       new_photo_path: object, expected_photo_path: str) -> None:
++                                       new_photo_path: object, expected_photo_path: str, confirmed_state: object) -> None:
+         """Revalidate a confirmed Workbench rename immediately before invoking PersonService."""
+         selected = self.persons_workbench._current_person_name()
+         record = self.person_db.get_by_name(old_name)
+-        if (selected != old_name or self.person_context.name != old_name or record is None or
+-                str(record.get("files_path") or "").strip() != expected_photo_path):
+-            QMessageBox.warning(self, "Rename Person", "The selected person or its record changed. Refresh and review the rename again.")
++        try: current_evidence = person_revision(self.person_service, old_name)
++        except (OSError, RuntimeError, ValueError) as exc:
++            QMessageBox.warning(self, "Rename Person", str(exc))
+             return
+         state = self.person_service.get_person_state(old_name)
++        if (selected != old_name or self.person_context.name != old_name or current_evidence != confirmed_state or
++                str((record or {}).get("files_path") or "").strip() != expected_photo_path or
++                (rename_photos and not state.database_record_exists)):
++            QMessageBox.warning(self, "Rename Person", "The selected person or its record changed. Refresh and review the rename again.")
++            return
+         allowed, reason = person_action_allowed("rename", old_name, state)
+         if not allowed:
+             QMessageBox.warning(self, "Rename Person", reason)
+@@ -1644,15 +1650,20 @@
+         if hasattr(self, "persons_workbench"):
+             self.persons_workbench.refresh()
+ 
+-    def _on_workbench_remove_requested(self, name: str, delete_photo_folder: bool, expected_photo_path: str) -> None:
++    def _on_workbench_remove_requested(self, name: str, delete_photo_folder: bool, expected_photo_path: str, confirmed_state: object) -> None:
+         """Apply confirmed full removal after checking the Workbench's current selected identity."""
+         selected = self.persons_workbench._current_person_name()
+         record = self.person_db.get_by_name(name)
+-        if (selected != name or self.person_context.name != name or record is None or
+-                str(record.get("files_path") or "").strip() != expected_photo_path):
+-            QMessageBox.warning(self, "Remove Person", "The selected person or its DB record changed. Refresh and review removal again.")
++        try: current_evidence = person_revision(self.person_service, name)
++        except (OSError, RuntimeError, ValueError) as exc:
++            QMessageBox.warning(self, "Remove Person", str(exc))
+             return
+         state = self.person_service.get_person_state(name)
++        if (selected != name or self.person_context.name != name or current_evidence != confirmed_state or
++                str((record or {}).get("files_path") or "").strip() != expected_photo_path or
++                (delete_photo_folder and not state.database_record_exists)):
++            QMessageBox.warning(self, "Remove Person", "The selected person or its DB record changed. Refresh and review removal again.")
++            return
+         allowed, reason = person_action_allowed("remove", name, state)
+         if not allowed:
+             QMessageBox.warning(self, "Remove Person", reason)
+@@ -1692,10 +1703,11 @@
+             return
+         if action != "add":
+             selected = self.persons_workbench._current_person_name()
+-            if name != selected or name != self.person_context.name or self.person_db.get_by_name(name) is None:
++            state = self.person_service.get_person_state(name)
++            if (name != selected or name != self.person_context.name or
++                    not (state.database_record_exists or state.has_recognition_state)):
+                 QMessageBox.warning(self, ACTION_LABELS[action], "The active person changed or is no longer available. Refresh the Workbench and retry.")
+                 return
+-            state = self.person_service.get_person_state(name)
+             allowed, reason = person_action_allowed(action, name, state)
+             if not allowed:
+                 QMessageBox.warning(self, ACTION_LABELS[action], reason)
+@@ -1720,7 +1732,7 @@
+         selected = self.persons_workbench._current_person_name()
+         state = self.person_service.get_person_state(name)
+         allowed, reason = person_action_allowed("reencode", name, state)
+-        if (selected != name or self.person_context.name != name or self.person_db.get_by_name(name) is None or
++        if (selected != name or self.person_context.name != name or not state.has_recognition_state or
+                 self.persons_workbench.reencode_panel.person_name != name or not allowed):
+             QMessageBox.warning(self, "Re-encode", reason or "The active person changed. Review the request again.")
+             return
+--- a/hdw_person_lens/person_management_evidence.py
++++ b/hdw_person_lens/person_management_evidence.py
+@@ -0,0 +1,37 @@
++"""Conservative, read-only confirmation evidence for Workbench rename/removal."""
++
++import hashlib
++import json
++import os
++import pickle
++from pathlib import Path
++
++
++def person_revision(service, name):
++    """Capture DB, KB membership/file revisions and this person's bank vectors.
++
++    File metadata cannot detect a malicious replacement preserving all timestamps.
++    External writers ignoring service locks can still race a transaction.
++    """
++    state = service.get_person_state(name)
++    record = service.get_person_record(name)
++    folder = service._kb_folder(name)
++    paths = service.get_person_image_paths(name)
++    revisions = []
++    for path in paths:
++        try:
++            stat = os.stat(path)
++            revisions.append((str(Path(path).resolve()), stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns))
++        except OSError:
++            revisions.append((str(path), "missing"))
++    manager = service.knowledge_manager
++    bank_lock = getattr(manager, "_bank_lock", None)
++    if bank_lock is not None and not bank_lock.acquire(blocking=False):
++        raise RuntimeError("Encoding bank is busy; retry after the current operation finishes.")
++    try:
++        encodings = service._snapshot_person_encodings(name)
++    finally:
++        if bank_lock is not None: bank_lock.release()
++    record_data = json.dumps(record, sort_keys=True, default=str).encode("utf-8")
++    digest = hashlib.sha256(pickle.dumps(encodings, protocol=4)).hexdigest()
++    return (state, hashlib.sha256(record_data).hexdigest(), str(folder.resolve()), folder.is_dir(), tuple(revisions), digest)
+--- a/tests/test_kb_only_management.py
++++ b/tests/test_kb_only_management.py
+@@ -31,7 +31,7 @@
+         for action in ("rename", "remove", "images", "reencode"):
+             self.assertFalse(policy.person_action_allowed(action, "Ada", missing)[0])
+         for action in ("images", "reencode"):
+-            self.assertFalse(policy.person_action_allowed(action, "Ada", kb_only)[0])
++            self.assertTrue(policy.person_action_allowed(action, "Ada", kb_only)[0])
+ 
+     def test_db_backed_actions_preserved(self):
+         state = SimpleNamespace(database_record_exists=True, has_recognition_state=True, image_count=2)
+@@ -45,7 +45,7 @@
+         self.assertIn("self.rename_photos.setEnabled(record is not None", opening)
+         self.assertIn("rename_photos and (not original_state.database_record_exists)", review)
+         self.assertIn("current_evidence != original_evidence", review)
+-        self.assertIn("confirmed_path, original_evidence)", review)
++        self.assertIn("self.original_photo_path, original_evidence)", review)
+ 
+     def test_remove_confirms_exact_state_and_preserves_external_folder(self):
+         opening = method("person_workbench_remove.py", "WorkbenchRemovePanel", "open_for")
+--- a/tests/test_person_management_v161.py
++++ b/tests/test_person_management_v161.py
+@@ -23,14 +23,14 @@
+             self.assertFalse(policy.person_action_allowed(action, "missing", None)[0])
+ 
+     def test_metadata_only_person(self):
+-        state = SimpleNamespace(has_recognition_state=False, image_count=0)
++        state = SimpleNamespace(database_record_exists=True, has_recognition_state=False, image_count=0)
+         self.assertTrue(policy.person_action_allowed("rename", "Ada", state)[0])
+         self.assertTrue(policy.person_action_allowed("remove", "Ada", state)[0])
+         self.assertFalse(policy.person_action_allowed("images", "Ada", state)[0])
+         self.assertFalse(policy.person_action_allowed("reencode", "Ada", state)[0])
+ 
+     def test_reencode_requires_images(self):
+-        state = SimpleNamespace(has_recognition_state=True, image_count=0)
++        state = SimpleNamespace(database_record_exists=True, has_recognition_state=True, image_count=0)
+         self.assertTrue(policy.person_action_allowed("images", "Ada", state)[0])
+         self.assertFalse(policy.person_action_allowed("reencode", "Ada", state)[0])
+         state.image_count = 3
+@@ -49,14 +49,15 @@
+         ast.parse(cls.main)
+ 
+     def test_action_target_matches_roster_selection(self):
+-        self.assertIn('self.action_target.setText(f"Managing: {name}"', self.workbench)
++        self.assertIn('f"Managing: {name}"', self.workbench)
++        self.assertIn('KB-only profile:', self.workbench)
+         self.assertIn('self.person_actions.items()', self.workbench)
+         self.assertIn('person_action_allowed(action, name, state)', self.workbench)
+ 
+     def test_dispatch_revalidates_identity(self):
+         self.assertIn('name != self.person_context.name', self.main)
+         self.assertIn('name != selected', self.main)
+-        self.assertIn('self.person_db.get_by_name(name) is None', self.main)
++        self.assertIn('state.database_record_exists or state.has_recognition_state', self.main)
+ 
+     def test_image_update_preserves_person(self):
+         self.assertIn('self.person_context.select(name)', self.main)
+--- a/tests/test_person_management_evidence.py
++++ b/tests/test_person_management_evidence.py
+@@ -0,0 +1,68 @@
++import importlib.util
++import tempfile
++import threading
++import unittest
++from pathlib import Path
++from types import SimpleNamespace
++
++
++PATH = Path(__file__).resolve().parents[1] / "hdw_person_lens" / "person_management_evidence.py"
++spec = importlib.util.spec_from_file_location("person_management_evidence", PATH)
++module = importlib.util.module_from_spec(spec)
++spec.loader.exec_module(module)
++
++
++class FakeService:
++    def __init__(self, root):
++        self.root = root
++        self.knowledge_manager = SimpleNamespace(_bank_lock=threading.RLock())
++        self.record = {"personName": "Ada", "colors": {"hair": "black"}}
++        self.vectors = {"face": [(0, b"original")], "body": []}
++
++    def get_person_state(self, name):
++        return (name, True, 1, 0, 1)
++
++    def get_person_record(self, name):
++        return self.record
++
++    def _kb_folder(self, name):
++        return self.root
++
++    def get_person_image_paths(self, name):
++        return [str(self.root / "portrait.jpg")]
++
++    def _snapshot_person_encodings(self, name):
++        return self.vectors
++
++
++class RevisionEvidenceTests(unittest.TestCase):
++    def test_db_nested_change_detected(self):
++        with tempfile.TemporaryDirectory() as directory:
++            root = Path(directory)
++            (root / "portrait.jpg").write_bytes(b"image")
++            service = FakeService(root)
++            initial = module.person_revision(service, "Ada")
++            service.record["colors"]["hair"] = "blonde"
++            self.assertNotEqual(initial, module.person_revision(service, "Ada"))
++
++    def test_same_count_encoding_replacement_detected(self):
++        with tempfile.TemporaryDirectory() as directory:
++            root = Path(directory)
++            (root / "portrait.jpg").write_bytes(b"image")
++            service = FakeService(root)
++            initial = module.person_revision(service, "Ada")
++            service.vectors["face"][0] = (0, b"replacement")
++            self.assertNotEqual(initial, module.person_revision(service, "Ada"))
++
++    def test_same_count_source_change_detected(self):
++        with tempfile.TemporaryDirectory() as directory:
++            root = Path(directory)
++            file = root / "portrait.jpg"
++            file.write_bytes(b"old")
++            service = FakeService(root)
++            initial = module.person_revision(service, "Ada")
++            file.write_bytes(b"longer image")
++            self.assertNotEqual(initial, module.person_revision(service, "Ada"))
++
++
++if __name__ == "__main__": unittest.main()

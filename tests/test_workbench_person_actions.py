@@ -20,12 +20,18 @@ class _Signal:
 
 class WorkbenchActionTests(unittest.TestCase):
     def test_selected_name_and_guard(self):
-        signal = _Signal()
-        stub = SimpleNamespace(_current_person_name=lambda: "Ada", _confirm_leave_profile=lambda: True,
-                               person_action_requested=signal)
+        calls = []
+        stub = SimpleNamespace(
+            _current_person_name=lambda: "Ada",
+            _confirm_leave_profile=lambda: True,
+            open_rename=lambda name, checked=False: calls.append(("rename", name, checked)) or True,
+            open_add_person=lambda: calls.append(("add",)),
+            detail_tabs=SimpleNamespace(indexOf=lambda widget: -1),
+            add_panel=object(),
+        )
         PersonsWorkbench._request_person_action(stub, "rename")
         PersonsWorkbench._request_person_action(stub, "add")
-        self.assertEqual(signal.calls, [("rename", "Ada"), ("add", "")])
+        self.assertEqual(calls, [("rename", "Ada", True), ("add",)])
 
     def test_unsaved_edit_cancels_action(self):
         signal = _Signal()
