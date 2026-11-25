@@ -262,6 +262,19 @@ class PersonsWorkbench(QWidget):
         self.focus_shortcut = QShortcut(QKeySequence("Ctrl+Shift+F"), self)
         self.focus_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         self.focus_shortcut.activated.connect(self._toggle_focus_details)
+        self.previous_person_button = QPushButton("◀ Previous")
+        self.next_person_button = QPushButton("Next ▶")
+        for button, delta in ((self.previous_person_button, -1), (self.next_person_button, 1)):
+            button.setProperty("themeRole", "secondary")
+            button.setToolTip("Navigate the current filtered and sorted roster while focusing on person details.")
+            button.clicked.connect(lambda _checked=False, step=delta: self._step_person(step))
+            button.setVisible(False)
+        self.previous_person_button.setAccessibleName("Previous visible person")
+        self.next_person_button.setAccessibleName("Next visible person")
+        for sequence, delta in (("Ctrl+Alt+Left", -1), ("Ctrl+Alt+Right", 1)):
+            shortcut = QShortcut(QKeySequence(sequence), self)
+            shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+            shortcut.activated.connect(lambda step=delta: self._step_person(step))
         self._focus_details = False
         self._normal_split_sizes = None
         toolbar.addWidget(self.search, 1)
@@ -269,6 +282,8 @@ class PersonsWorkbench(QWidget):
         toolbar.addWidget(self.roster_count)
         toolbar.addWidget(refresh)
         toolbar.addWidget(self.focus_button)
+        toolbar.addWidget(self.previous_person_button)
+        toolbar.addWidget(self.next_person_button)
         root.addLayout(toolbar)
         for signal in (self.proxy.rowsInserted, self.proxy.rowsRemoved, self.proxy.modelReset, self.proxy.layoutChanged):
             signal.connect(lambda *args: QTimer.singleShot(0, self._update_roster_count))
@@ -578,6 +593,17 @@ class PersonsWorkbench(QWidget):
     def _toggle_focus_details(self):
         self._set_focus_details(not self._focus_details)
 
+    def _step_person(self, delta):
+        """Navigate visible proxy rows without clearing filters or bypassing unsaved-edit guards."""
+        if not self._focus_details or delta not in (-1, 1): return
+        count = self.proxy.rowCount()
+        if not count: return
+        current = self.table.currentIndex()
+        row = current.row() if current.isValid() else (-1 if delta > 0 else count)
+        target = row + delta
+        if not 0 <= target < count: return
+        self.table.selectRow(target)  # _on_current_row owns unsaved-edit confirmation and cancellation.
+
     def _set_focus_details(self, enabled):
         enabled = bool(enabled)
         if enabled == self._focus_details: return
@@ -590,6 +616,8 @@ class PersonsWorkbench(QWidget):
         self.focus_button.setText("Show Roster" if enabled else "Focus Details")
         self.focus_button.setToolTip("Restore the roster and previous split." if enabled else
                                      "Expand details and restore the roster (Ctrl+Shift+F).")
+        self.previous_person_button.setVisible(enabled)
+        self.next_person_button.setVisible(enabled)
         if not enabled:
             sizes = self._normal_split_sizes or initial_split_sizes(self.splitter.width(), roster_share=self._restored_roster_share)
             self.splitter.setSizes(sizes)

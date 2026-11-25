@@ -37,7 +37,8 @@ class WorkbenchFocusTests(unittest.TestCase):
         self.scheduled = []
         self.wb = SimpleNamespace(_focus_details=False, _normal_split_sizes=None, _restored_roster_share=0.42,
                                   splitter=Splitter(), table=Widget(), search=Widget(), source_filter=Widget(),
-                                  roster_count=Widget(), focus_button=Button(), selected_person="Ada",
+                                  roster_count=Widget(), focus_button=Button(), previous_person_button=Button(),
+                                  next_person_button=Button(), selected_person="Ada",
                                   _schedule_visible_portraits=lambda: self.scheduled.append("scheduled"))
 
     def test_focus_hides_only_roster_controls(self):
