@@ -23,7 +23,7 @@ from jsonschema import Draft202012Validator, ValidationError
 from PyQt6.QtCore import (QAbstractTableModel, QEvent, QModelIndex, QObject, QRunnable, QSignalBlocker, QSize, QSortFilterProxyModel,
                           QThreadPool, QTimer, Qt, pyqtSignal)
 from PyQt6.QtGui import QImage, QKeySequence, QPixmap, QShortcut
-from PyQt6.QtWidgets import (QApplication, QAbstractItemView, QComboBox, QGroupBox, QHeaderView, QHBoxLayout, QLabel, QLineEdit,
+from PyQt6.QtWidgets import (QApplication, QAbstractItemView, QComboBox, QGridLayout, QGroupBox, QHeaderView, QHBoxLayout, QLabel, QLineEdit,
                              QMessageBox, QPushButton, QScrollArea, QSizePolicy, QSplitter, QTabWidget, QTableView, QVBoxLayout, QWidget)
 from .person_portrait_service import PersonPortraitService
 from .portrait_process import PortraitProcessRunner
@@ -56,6 +56,11 @@ from .person_workbench_images import WorkbenchImageEditor
 from .person_workbench_add import WorkbenchAddPerson
 from .person_workbench_remove import WorkbenchRemovePanel
 from .person_workbench_reencode import WorkbenchReencodePanel
+
+
+def assessment_columns(width):
+    """Two quality panels fit comfortably only when the details viewport is wide."""
+    return 2 if width >= 1120 else 1
 
 
 class _PortraitSignals(QObject):
@@ -469,13 +474,24 @@ class PersonsWorkbench(QWidget):
         self.encoding_impact.recommendations = self.recommendations
         self.recommendations._decision_getter = self.curation.current_decisions
         self.curation.decision_changed.connect(self.recommendations.review_decisions_changed)
-        for title, panel in (("Collection quality", self.collection), ("Identity consistency", self.identity),
-                             ("Reference shortlist", self.recommendations)):
+        self.quality_grid = QGridLayout()
+        self.quality_grid.setHorizontalSpacing(10)
+        self.quality_groups = []
+        self._assessment_columns = 1
+        for title, panel in (("Collection quality", self.collection), ("Identity consistency", self.identity)):
             group = QGroupBox(title)
             group_layout = QVBoxLayout(group)
             group_layout.setContentsMargins(8, 8, 8, 8)
             group_layout.addWidget(panel)
-            assessment_layout.addWidget(group)
+            self.quality_groups.append(group)
+        self.quality_grid.addWidget(self.quality_groups[0], 0, 0)
+        self.quality_grid.addWidget(self.quality_groups[1], 1, 0)
+        assessment_layout.addLayout(self.quality_grid)
+        shortlist_group = QGroupBox("Reference shortlist")
+        shortlist_layout = QVBoxLayout(shortlist_group)
+        shortlist_layout.setContentsMargins(8, 8, 8, 8)
+        shortlist_layout.addWidget(self.recommendations)
+        assessment_layout.addWidget(shortlist_group)
         self.collection.assessment_ready.connect(self.recommendations.set_collection)
         self.identity.assessment_ready.connect(self.recommendations.set_identity)
         self.collection.assessment_ready.connect(self.curation.set_collection)
@@ -529,6 +545,7 @@ class PersonsWorkbench(QWidget):
         assessment_layout.addWidget(provenance_group)
         assessment_layout.addStretch()
         self.assessment_scroll = self._scroll_section(assessment)
+        self.assessment_scroll.viewport().installEventFilter(self)
         self.detail_tabs.addTab(self.assessment_scroll, "KB Assessment")
         self.overview = PersonOverviewPanel(self)
         self.person_activity = PersonWorkbenchActivity(self.overview)
@@ -716,7 +733,24 @@ class PersonsWorkbench(QWidget):
             QTimer.singleShot(0, self._apply_initial_split)
         if watched is self.table.viewport() and event.type() in (QEvent.Type.Resize, QEvent.Type.Show):
             self._schedule_visible_portraits()
+        if hasattr(self, "assessment_scroll") and watched is self.assessment_scroll.viewport() and event.type() in (QEvent.Type.Resize, QEvent.Type.Show):
+            QTimer.singleShot(0, self._update_assessment_columns)
         return super().eventFilter(watched, event)
+
+    def _update_assessment_columns(self):
+        if not self.assessment_scroll.isVisible(): return
+        columns = assessment_columns(self.assessment_scroll.viewport().width())
+        if columns == self._assessment_columns: return
+        self._assessment_columns = columns
+        for group in self.quality_groups: self.quality_grid.removeWidget(group)
+        if columns == 2:
+            self.quality_grid.addWidget(self.quality_groups[0], 0, 0)
+            self.quality_grid.addWidget(self.quality_groups[1], 0, 1)
+        else:
+            self.quality_grid.addWidget(self.quality_groups[0], 0, 0)
+            self.quality_grid.addWidget(self.quality_groups[1], 1, 0)
+        self.quality_grid.setColumnStretch(0, 1)
+        self.quality_grid.setColumnStretch(1, 1 if columns == 2 else 0)
 
     def _schedule_visible_portraits(self, *_args):
         QTimer.singleShot(0, self._load_visible_portraits)
