@@ -47,6 +47,7 @@ from .person_overview import PersonOverviewPanel
 from .person_context_actions import suggested_person_action
 from .person_kb_journey import PersonKBJourneyPanel
 from .person_workbench_activity import PersonWorkbenchActivity
+from .person_workbench_preferences import WorkbenchViewPreferences
 from .person_roster_filter_policy import record_matches_filters, search_terms
 from .person_action_policy import ACTION_LABELS, person_action_allowed
 from .person_roster_sources import combined_roster
@@ -309,6 +310,8 @@ class PersonsWorkbench(QWidget):
         self.splitter.setChildrenCollapsible(False)
         self.splitter.installEventFilter(self)
         self._initial_split_applied = False
+        self._restored_roster_share = 0.42
+        self._view_preferences = WorkbenchViewPreferences()
         self.table = QTableView()
         self.table.setAccessibleName("Persons roster")
         self.table.setToolTip("Select a person to inspect their profile, KB images, and assessments.")
@@ -528,7 +531,32 @@ class PersonsWorkbench(QWidget):
         root.addWidget(self.splitter, 1)
         apply_workbench_theme(self)
         self.table.sortByColumn(1, Qt.SortOrder.AscendingOrder)
+        self._restore_view_preferences()
+        QApplication.instance().aboutToQuit.connect(self._save_view_preferences)
         QTimer.singleShot(0, self._load_visible_portraits)
+
+    def _restore_view_preferences(self):
+        saved = self._view_preferences.load(self.model.columnCount())
+        self._restored_roster_share = saved["share"]
+        if saved["header"] is not None: self.table.horizontalHeader().restoreState(saved["header"])
+        mode_index = self.source_filter.findData(saved["mode"])
+        if mode_index >= 0: self.source_filter.setCurrentIndex(mode_index)
+        self.search.setText(saved["search"])
+        self.detail_tabs.setCurrentIndex(saved["tab"])
+
+    def _save_view_preferences(self):
+        if not hasattr(self, "detail_tabs"): return
+        sizes = self.splitter.sizes()
+        share = sizes[0] / sum(sizes) if self._initial_split_applied and len(sizes) == 2 and sum(sizes) > 0 else None
+        tab = self.detail_tabs.currentIndex()
+        if tab not in (0, 1, 2, 3): tab = 3  # Never restore temporary Add Person panels.
+        self._view_preferences.save(share=share, tab=tab, mode=self.source_filter.currentData(),
+                                    search=self.search.text(), header=self.table.horizontalHeader().saveState(),
+                                    column_count=self.model.columnCount())
+
+    def closeEvent(self, event):
+        self._save_view_preferences()
+        super().closeEvent(event)
 
     def _focus_search(self):
         self.search.setFocus(Qt.FocusReason.ShortcutFocusReason)
@@ -620,7 +648,7 @@ class PersonsWorkbench(QWidget):
     def _apply_initial_split(self):
         if self._initial_split_applied or not self.isVisible() or self.splitter.width() < 700: return
         self._initial_split_applied = True
-        self.splitter.setSizes(initial_split_sizes(self.splitter.width(), roster_share=0.42))
+        self.splitter.setSizes(initial_split_sizes(self.splitter.width(), roster_share=self._restored_roster_share))
 
     def eventFilter(self, watched, event):
         if watched is self.splitter and event.type() == QEvent.Type.Resize and not self._initial_split_applied:
