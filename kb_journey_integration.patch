@@ -1,0 +1,67 @@
+--- a/hdw_person_lens/persons_workbench.py
++++ b/hdw_person_lens/persons_workbench.py
+@@ -45,6 +45,7 @@
+ from .person_status_dashboard import PersonStatusDashboard
+ from .person_overview import PersonOverviewPanel
+ from .person_context_actions import suggested_person_action
++from .person_kb_journey import PersonKBJourneyPanel
+ from .person_roster_filter_policy import record_matches_filters, search_terms
+ from .person_action_policy import ACTION_LABELS, person_action_allowed
+ from .person_roster_sources import combined_roster
+@@ -474,7 +475,12 @@
+             self.collection, self.identity, self.recommendations, self,
+             prepare_collection=self._prepare_assessment_sources,
+         )
++        self.recommendations.shortlist_ready.connect(lambda _result: QTimer.singleShot(0, self._refresh_readiness))
++        self.recommendations.shortlist_invalidated.connect(lambda: QTimer.singleShot(0, self._refresh_readiness))
+         assessment_layout.insertWidget(0, self.assessment_flow)
++        self.kb_journey = PersonKBJourneyPanel(self)
++        self.kb_journey.stage_requested.connect(self._navigate_kb_stage)
++        assessment_layout.insertWidget(0, self.kb_journey)
+         assessment_hint = QLabel("Double-click an image finding or shortlist card to inspect it in KB Gallery · identity unverified")
+         assessment_hint.setObjectName("assessmentHint")
+         assessment_hint.setWordWrap(True)
+@@ -565,6 +571,18 @@
+             self.gallery.select_path(path)
+             self._assessment_image_pending = None
+ 
++    def _navigate_kb_stage(self, stage):
++        if not self._current_person_name(): return
++        if stage == "gallery":
++            self.detail_tabs.setCurrentIndex(1)
++            return
++        targets = {"collection": self.collection, "identity": self.identity, "shortlist": self.recommendations,
++                   "review": self.curation, "encode": self.encoding_impact}
++        target = targets.get(stage)
++        if target is None: return
++        self.detail_tabs.setCurrentIndex(2)
++        QTimer.singleShot(0, lambda widget=target: self.assessment_scroll.ensureWidgetVisible(widget, 0, 24))
++
+     def _set_gallery_person(self, name, paths, preferred=None):
+         self._assessment_image_pending = None
+         self._gallery_pending = (name, list(paths), preferred) if name else None
+@@ -660,6 +678,7 @@
+             self.status_dashboard.set_status(None)
+             self.overview.set_person("", None, None)
+             self._update_suggested_action("", None)
++            self.kb_journey.set_progress("", 0)
+             return
+         paths = self.person_service.get_person_image_paths(name)
+         current = source_snapshot(paths)
+@@ -682,6 +701,8 @@
+         self.status_dashboard.set_status(state, readiness, report)
+         self.overview.set_person(name, self.person_db.get_by_name(name), state, readiness, report)
+         self._update_suggested_action(name, state, readiness)
++        self.kb_journey.set_progress(name, len(paths), self.assessment_flow.flow.states, reviewed, review_needed,
++                                     state.face_encodings, state.body_encodings, report)
+ 
+     def _refresh_readiness_requested(self):
+         if self._portrait_stopping or not self._current_person_name(): return
+@@ -1018,6 +1039,7 @@
+         self.status_dashboard.set_status(None)
+         self.overview.set_person("", None, None)
+         self._update_suggested_action("", None)
++        self.kb_journey.set_progress("", 0)
+         self.kb_status.setText("KB status: —")
+         self.readiness.set_report(None)
+ 
