@@ -9,6 +9,7 @@ GATES = {
     "profile": ("qt", "db_backed", "kb_only", "validation", "conflict", "unsaved", "standalone"),
     "navigation": ("qt", "exact_person", "context", "unsaved", "missing_person", "tab_switch"),
     "roster": ("qt", "search", "sort", "source_filter", "portraits", "unsaved", "refresh"),
+    "advanced_tools": ("qt", "primary_actions", "editor", "legacy_browser", "legacy_dialogs", "shortcuts", "global_encoding"),
 }
 RETAINED = {
     "db_editor": "Standalone schema administration, DB-only deletion, file reload and record creation remain independent.",
@@ -61,6 +62,17 @@ def inspect(root):
             "portrait_workers": "_schedule_visible_portraits" in methods(workbench, "PersonsWorkbench"),
             "refresh": "refresh" in methods(workbench, "PersonsWorkbench"),
         },
+        "advanced_tools": {
+            "primary_actions": all(f'open_workbench_management("{action}")' in main for action in ("add", "rename", "remove", "images", "reencode")),
+            "view_menu": 'advanced = m.addMenu("Advanced Tools")' in main,
+            "editor_route": 'act(advanced, "Persons DB Editor…", self.show_person_database' in main,
+            "browser_route": 'act(advanced, "Browse Persons DB (Legacy)…", self.query_persons' in main,
+            "legacy_dialogs": 'legacy = advanced.addMenu("Legacy Person Management Dialogs")' in main and all(
+                f'self.{handler}, tip="Original' in main for handler in
+                ("add_new_person", "rename_person", "remove_person", "edit_person_images", "reencode_single_person")),
+            "shortcuts": 'shortcut="Ctrl+Shift+P"' in main and 'shortcut="Ctrl+Alt+B"' in main,
+            "global_encoding": 'act(maint, "Rebuild All Encodings…", self.reencode_knowledge_base' in main,
+        },
         "db_editor": {"standalone": "PersonDbEditorWidget" in db, "db_delete": "on_delete" in methods(db, "PersonDbEditorWidget")},
         "legacy_browser": {"entry_point": "query_persons" in methods(main, "MainWindow")},
         "global_encoding": {"entry_point": "reencode_knowledge_base" in methods(main, "MainWindow")},
@@ -86,10 +98,11 @@ def decide(findings, evidence):
 
 
 def markdown(result):
-    lines = ["# PersonLens v1.11.5 workspace parity audit", "", "| Capability | Decision | Reason |",
+    lines = ["# PersonLens v1.12.3 workspace parity audit", "", "| Capability | Decision | Reason |",
              "| --- | --- | --- |"]
     lines.extend(f"| {name} | {item['decision']} | {item['reason']} |" for name, item in result.items())
-    lines.extend(["", "This is a read-only structural/evidence audit, not an authorization to delete legacy code.",
+    lines.extend(["", "Native evidence is recorded by explicit test observation; passing structural tests alone is insufficient.",
+                  "This is a read-only structural/evidence audit, not an authorization to delete legacy code.",
                   "An ACCEPTED integration decision does not imply that Persons DB or the legacy browser can be removed."])
     return "\n".join(lines)
 
