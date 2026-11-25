@@ -44,6 +44,7 @@ from .person_profile_merge import merge_profile
 from .person_profile_panel import PersonProfilePanel
 from .person_status_dashboard import PersonStatusDashboard
 from .person_overview import PersonOverviewPanel
+from .person_context_actions import suggested_person_action
 from .person_roster_filter_policy import record_matches_filters, search_terms
 from .person_action_policy import ACTION_LABELS, person_action_allowed
 from .person_roster_sources import combined_roster
@@ -283,12 +284,24 @@ class PersonsWorkbench(QWidget):
         self.action_target.setObjectName("personStatus")
         self.action_target.setAccessibleName("Person management target")
         self._update_person_actions("")
+        self.suggested_action = QPushButton("Add Person")
+        self.suggested_action.setProperty("themeRole", "primary")
+        self.suggested_action.setAccessibleName("Suggested person action")
+        self.suggested_action.clicked.connect(self._run_suggested_action)
+        self.suggested_action_hint = QLabel("Select a person or create a new profile.")
+        self.suggested_action_hint.setWordWrap(True)
+        self.suggested_action_hint.setObjectName("personStatus")
+        self._suggested_route = "add"
         self.portrait_status = QLabel()
         self.portrait_status.setObjectName("personStatus")
         actions_row.addStretch(1)
         actions_row.addWidget(self.action_target)
         actions_row.addWidget(self.portrait_status)
         root.addLayout(actions_row)
+        suggestion_row = QHBoxLayout()
+        suggestion_row.addWidget(self.suggested_action)
+        suggestion_row.addWidget(self.suggested_action_hint, 1)
+        root.addLayout(suggestion_row)
 
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
         self.splitter.setChildrenCollapsible(False)
@@ -646,6 +659,7 @@ class PersonsWorkbench(QWidget):
             self.readiness.set_report(None)
             self.status_dashboard.set_status(None)
             self.overview.set_person("", None, None)
+            self._update_suggested_action("", None)
             return
         paths = self.person_service.get_person_image_paths(name)
         current = source_snapshot(paths)
@@ -667,6 +681,7 @@ class PersonsWorkbench(QWidget):
         self.readiness.set_report(readiness)
         self.status_dashboard.set_status(state, readiness, report)
         self.overview.set_person(name, self.person_db.get_by_name(name), state, readiness, report)
+        self._update_suggested_action(name, state, readiness)
 
     def _refresh_readiness_requested(self):
         if self._portrait_stopping or not self._current_person_name(): return
@@ -805,6 +820,22 @@ class PersonsWorkbench(QWidget):
             allowed, reason = person_action_allowed(action, name, state)
             button.setEnabled(allowed)
             button.setStatusTip(reason or f"{ACTION_LABELS[action]}" + (f" · {name}" if name else ""))
+
+    def _update_suggested_action(self, name, state, readiness=None):
+        label, route, explanation = suggested_person_action(name, state, readiness)
+        self._suggested_route = route
+        self.suggested_action.setText(label)
+        self.suggested_action_hint.setText(explanation)
+        self.suggested_action.setEnabled(route not in ("images", "reencode") or
+                                         person_action_allowed(route, name, state)[0])
+
+    def _run_suggested_action(self):
+        route = self._suggested_route
+        if route == "refresh": self.refresh()
+        elif route in ("add", "images", "reencode"): self._request_person_action(route)
+        elif route == "profile": self.detail_tabs.setCurrentIndex(0)
+        elif route == "gallery": self.detail_tabs.setCurrentIndex(1)
+        elif route == "assessment": self.detail_tabs.setCurrentIndex(2)
 
     def _request_advanced_editor(self):
         name = self._current_person_name()
@@ -986,6 +1017,7 @@ class PersonsWorkbench(QWidget):
         self.profile_panel.set_record({})
         self.status_dashboard.set_status(None)
         self.overview.set_person("", None, None)
+        self._update_suggested_action("", None)
         self.kb_status.setText("KB status: —")
         self.readiness.set_report(None)
 
