@@ -366,6 +366,7 @@ class SchemaForm(QWidget):
 # --------------------------- Main Window ---------------------------
 class PersonDbEditorWidget(QWidget):
     person_selected = pyqtSignal(str)
+    open_workbench_requested = pyqtSignal(str)
     record_saved = pyqtSignal(str)
     record_deleted = pyqtSignal(str)
     database_reloaded = pyqtSignal()
@@ -440,6 +441,11 @@ class PersonDbEditorWidget(QWidget):
         self.btn_delete = QPushButton("Delete DB Record Only", self.right_panel,)
         self.btn_reload = QPushButton("Reload File", self.right_panel,)
         self.btn_export = QPushButton("Save File", self.right_panel,)
+        self.btn_workbench = QPushButton("Open in Workbench", self.right_panel)
+        self.btn_workbench.setToolTip("Open the current database person in Persons Workbench.")
+        self.btn_workbench.setAccessibleName("Open current person in Workbench")
+        self.btn_workbench.setVisible(False)  # The standalone editor has no Workbench navigation target.
+        self.btn_workbench.clicked.connect(self._request_workbench)
         action_tips = (
             (self.btn_new, "Start a new unsaved database record."),
             (self.btn_validate, "Validate the current form against the person schema."),
@@ -472,6 +478,7 @@ class PersonDbEditorWidget(QWidget):
         ):
             self.button_layout.addWidget(button)
         self.button_layout.addStretch(1)
+        self.left_layout.addWidget(self.btn_workbench)
         self.button_layout.addWidget(self.status)
         self.right_layout.addLayout(self.button_layout)
         self.splitter.addWidget(self.right_panel)
@@ -638,6 +645,16 @@ class PersonDbEditorWidget(QWidget):
 
     def has_unsaved_changes(self) -> bool:
         return self._selection_baseline is not None and self.form_widget.collect_data() != self._selection_baseline
+
+    def _request_workbench(self) -> None:
+        name = self.current_key
+        if not name or self._selected_key() != name or self.person_db.get_by_name(name) is None:
+            QMessageBox.warning(self, "Open in Workbench", "Select a current database record first.")
+            return
+        if self.has_unsaved_changes():
+            QMessageBox.warning(self, "Open in Workbench", "Save or discard the unsaved database edits first.")
+            return
+        self.open_workbench_requested.emit(name)
 
     def select_person(self, name: str) -> bool:
         """Load one exact DB person; preserve unsaved form values and reject missing names."""
