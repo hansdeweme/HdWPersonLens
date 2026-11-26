@@ -32,6 +32,11 @@ class Splitter:
     def setSizes(self, sizes): self.current = list(sizes)
 
 
+class Toolbar:
+    def __init__(self): self.stretches = {}
+    def setStretch(self, index, factor): self.stretches[index] = factor
+
+
 class WorkbenchFocusTests(unittest.TestCase):
     def setUp(self):
         self.scheduled = []
@@ -39,6 +44,7 @@ class WorkbenchFocusTests(unittest.TestCase):
                                   splitter=Splitter(), table=Widget(), search=Widget(), source_filter=Widget(),
                                   roster_count=Widget(), focus_button=Button(), previous_person_button=Button(),
                                   next_person_button=Button(), selected_person="Ada",
+                                  _toolbar=Toolbar(), _focus_spacer_index=4,
                                   _schedule_visible_portraits=lambda: self.scheduled.append("scheduled"))
 
     def test_focus_hides_only_roster_controls(self):
@@ -46,6 +52,7 @@ class WorkbenchFocusTests(unittest.TestCase):
         for widget in (self.wb.table, self.wb.search, self.wb.source_filter, self.wb.roster_count):
             self.assertFalse(widget.visible)
         self.assertEqual(self.wb.focus_button.text, "Show Roster")
+        self.assertEqual(self.wb._toolbar.stretches[4], 1)
         self.assertEqual(self.wb.selected_person, "Ada")
 
     def test_restore_retains_exact_split_and_selection(self):
@@ -55,6 +62,7 @@ class WorkbenchFocusTests(unittest.TestCase):
         self.assertEqual(self.wb.splitter.sizes(), [420, 580])
         self.assertTrue(self.wb.table.visible)
         self.assertEqual(self.wb.selected_person, "Ada")
+        self.assertEqual(self.wb._toolbar.stretches[4], 0)
         self.assertEqual(self.scheduled, ["scheduled"])
 
     def test_repeated_calls_do_not_change_state(self):

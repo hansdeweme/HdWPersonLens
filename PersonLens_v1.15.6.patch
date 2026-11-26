@@ -1,0 +1,62 @@
+--- a/hdw_person_lens/persons_workbench.py
++++ b/hdw_person_lens/persons_workbench.py
+@@ -291,9 +291,12 @@
+         toolbar.addWidget(self.source_filter)
+         toolbar.addWidget(self.roster_count)
+         toolbar.addWidget(refresh)
+-        toolbar.addWidget(self.focus_button)
++        self._focus_spacer_index = toolbar.count()
++        toolbar.addStretch(0)
+         toolbar.addWidget(self.previous_person_button)
+         toolbar.addWidget(self.next_person_button)
++        toolbar.addWidget(self.focus_button)
++        self._toolbar = toolbar
+         root.addLayout(toolbar)
+         for signal in (self.proxy.rowsInserted, self.proxy.rowsRemoved, self.proxy.modelReset, self.proxy.layoutChanged):
+             signal.connect(lambda *args: QTimer.singleShot(0, self._update_roster_count))
+@@ -646,6 +649,7 @@
+         self._focus_details = enabled
+         self.table.setVisible(not enabled)
+         for widget in (self.search, self.source_filter, self.roster_count): widget.setVisible(not enabled)
++        self._toolbar.setStretch(self._focus_spacer_index, int(enabled))
+         self.focus_button.setText("Show Roster" if enabled else "Focus Details")
+         self.focus_button.setToolTip("Restore the roster and previous split." if enabled else
+                                      "Expand details and restore the roster (Ctrl+Shift+F).")
+--- a/tests/test_workbench_focus_v150.py
++++ b/tests/test_workbench_focus_v150.py
+@@ -32,6 +32,11 @@
+     def setSizes(self, sizes): self.current = list(sizes)
+ 
+ 
++class Toolbar:
++    def __init__(self): self.stretches = {}
++    def setStretch(self, index, factor): self.stretches[index] = factor
++
++
+ class WorkbenchFocusTests(unittest.TestCase):
+     def setUp(self):
+         self.scheduled = []
+@@ -39,6 +44,7 @@
+                                   splitter=Splitter(), table=Widget(), search=Widget(), source_filter=Widget(),
+                                   roster_count=Widget(), focus_button=Button(), previous_person_button=Button(),
+                                   next_person_button=Button(), selected_person="Ada",
++                                  _toolbar=Toolbar(), _focus_spacer_index=4,
+                                   _schedule_visible_portraits=lambda: self.scheduled.append("scheduled"))
+ 
+     def test_focus_hides_only_roster_controls(self):
+@@ -46,6 +52,7 @@
+         for widget in (self.wb.table, self.wb.search, self.wb.source_filter, self.wb.roster_count):
+             self.assertFalse(widget.visible)
+         self.assertEqual(self.wb.focus_button.text, "Show Roster")
++        self.assertEqual(self.wb._toolbar.stretches[4], 1)
+         self.assertEqual(self.wb.selected_person, "Ada")
+ 
+     def test_restore_retains_exact_split_and_selection(self):
+@@ -55,6 +62,7 @@
+         self.assertEqual(self.wb.splitter.sizes(), [420, 580])
+         self.assertTrue(self.wb.table.visible)
+         self.assertEqual(self.wb.selected_person, "Ada")
++        self.assertEqual(self.wb._toolbar.stretches[4], 0)
+         self.assertEqual(self.scheduled, ["scheduled"])
+ 
+     def test_repeated_calls_do_not_change_state(self):

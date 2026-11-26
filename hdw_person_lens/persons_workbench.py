@@ -291,9 +291,12 @@ class PersonsWorkbench(QWidget):
         toolbar.addWidget(self.source_filter)
         toolbar.addWidget(self.roster_count)
         toolbar.addWidget(refresh)
-        toolbar.addWidget(self.focus_button)
+        self._focus_spacer_index = toolbar.count()
+        toolbar.addStretch(0)
         toolbar.addWidget(self.previous_person_button)
         toolbar.addWidget(self.next_person_button)
+        toolbar.addWidget(self.focus_button)
+        self._toolbar = toolbar
         root.addLayout(toolbar)
         for signal in (self.proxy.rowsInserted, self.proxy.rowsRemoved, self.proxy.modelReset, self.proxy.layoutChanged):
             signal.connect(lambda *args: QTimer.singleShot(0, self._update_roster_count))
@@ -646,6 +649,7 @@ class PersonsWorkbench(QWidget):
         self._focus_details = enabled
         self.table.setVisible(not enabled)
         for widget in (self.search, self.source_filter, self.roster_count): widget.setVisible(not enabled)
+        self._toolbar.setStretch(self._focus_spacer_index, int(enabled))
         self.focus_button.setText("Show Roster" if enabled else "Focus Details")
         self.focus_button.setToolTip("Restore the roster and previous split." if enabled else
                                      "Expand details and restore the roster (Ctrl+Shift+F).")
