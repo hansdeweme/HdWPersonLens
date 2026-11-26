@@ -24,7 +24,8 @@ class WorkbenchLayoutTests(unittest.TestCase):
     def test_splitter_is_applied_once_and_remains_user_adjustable(self):
         self.assertIn("self.splitter.setChildrenCollapsible(False)", WORKBENCH)
         self.assertIn("if self._initial_split_applied or not self.isVisible()", WORKBENCH)
-        self.assertIn("initial_split_sizes(self.splitter.width(), roster_share=0.42)", WORKBENCH)
+        self.assertIn("initial_split_sizes(self.splitter.width(), roster_share=self._restored_roster_share)", WORKBENCH)
+        self.assertIn("self._normal_split_sizes", WORKBENCH)
         self.assertIn("header.setSectionsMovable(True)", WORKBENCH)
 
     def test_gallery_workers_and_lazy_loading_unchanged(self):

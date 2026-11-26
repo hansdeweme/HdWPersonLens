@@ -1,0 +1,67 @@
+--- a/tests/test_management_retirement_navigation.py
++++ b/tests/test_management_retirement_navigation.py
+@@ -20,10 +20,11 @@
+         setup = SOURCE[SOURCE.index('# ---------------- Manage Persons ----------------'):SOURCE.index('# ---------------- Query Persons ----------------')]
+         for action in ("add", "rename", "remove", "images", "reencode"):
+             self.assertIn(f'self.open_workbench_management("{action}")', setup)
+-        self.assertIn('"Advanced / Legacy Tools"', setup)
++        self.assertIn('advanced = m.addMenu("Advanced Tools")', SOURCE)
++        self.assertIn('legacy = advanced.addMenu("Legacy Person Management Dialogs")', SOURCE)
+ 
+     def test_legacy_dialogs_remain_reachable(self):
+-        setup = SOURCE[SOURCE.index('# ---------------- Manage Persons ----------------'):SOURCE.index('# ---------------- Query Persons ----------------')]
++        setup = SOURCE[SOURCE.index('legacy = advanced.addMenu("Legacy Person Management Dialogs")'):]
+         for name in ("add_new_person", "rename_person", "remove_person", "edit_person_images", "reencode_single_person"):
+             self.assertIn(f"self.{name}", setup)
+ 
+--- a/tests/test_navigation_consolidation_v1120.py
++++ b/tests/test_navigation_consolidation_v1120.py
+@@ -44,7 +44,8 @@
+     def test_legacy_paths_remain(self):
+         for method in ("query_persons", "reencode_knowledge_base", "open_workbench_management"):
+             self.assertIn(method, self.methods)
+-        self.assertIn('legacy = m.addMenu("Advanced / Legacy Tools")', self.text)
++        self.assertIn('advanced = m.addMenu("Advanced Tools")', self.text)
++        self.assertIn('legacy = advanced.addMenu("Legacy Person Management Dialogs")', self.text)
+ 
+ 
+ if __name__ == "__main__": unittest.main()
+--- a/tests/test_recognition_only_roster.py
++++ b/tests/test_recognition_only_roster.py
+@@ -47,7 +47,12 @@
+ 
+     def test_read_only_profile_clear_and_search_marker(self):
+         selection = method("persons_workbench.py", "PersonsWorkbench", "_on_current_row")
+-        self.assertIn("self.profile_edit.setEnabled(bool(record)", selection)
++        self.assertIn("self.profile_panel.set_record(record)", selection)
++        panel = (ROOT / "person_profile_panel.py").read_text(encoding="utf-8")
++        self.assertIn("self.edit_button.setEnabled(bool(record) and self.editor is not None)", panel)
++        start = method("persons_workbench.py", "PersonsWorkbench", "_start_profile_edit")
++        self.assertIn("if record is None:", start)
++        self.assertIn('self.person_db.get_by_name(name)', start)
+         self.assertIn("KB-only profile", selection)
+         data = method("persons_workbench.py", "PersonRosterModel", "data")
+         self.assertIn("[KB only]", data)
+--- a/tests/test_workbench_layout_v151.py
++++ b/tests/test_workbench_layout_v151.py
+@@ -24,7 +24,8 @@
+     def test_splitter_is_applied_once_and_remains_user_adjustable(self):
+         self.assertIn("self.splitter.setChildrenCollapsible(False)", WORKBENCH)
+         self.assertIn("if self._initial_split_applied or not self.isVisible()", WORKBENCH)
+-        self.assertIn("initial_split_sizes(self.splitter.width(), roster_share=0.42)", WORKBENCH)
++        self.assertIn("initial_split_sizes(self.splitter.width(), roster_share=self._restored_roster_share)", WORKBENCH)
++        self.assertIn("self._normal_split_sizes", WORKBENCH)
+         self.assertIn("header.setSectionsMovable(True)", WORKBENCH)
+ 
+     def test_gallery_workers_and_lazy_loading_unchanged(self):
+--- a/tests/test_preferred_portraits.py
++++ b/tests/test_preferred_portraits.py
+@@ -10,7 +10,7 @@
+ from PIL import Image
+ import pytest
+ 
+-from test_person_portrait_service import FakePersonService, current_cache_paths, load_module
++from tests.test_person_portrait_service import FakePersonService, current_cache_paths, load_module
+ 
+ 
+ def create_image(path, color, size=100):

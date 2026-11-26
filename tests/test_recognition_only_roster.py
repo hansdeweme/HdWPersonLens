@@ -47,7 +47,12 @@ class RecognitionOnlyRosterTests(unittest.TestCase):
 
     def test_read_only_profile_clear_and_search_marker(self):
         selection = method("persons_workbench.py", "PersonsWorkbench", "_on_current_row")
-        self.assertIn("self.profile_edit.setEnabled(bool(record)", selection)
+        self.assertIn("self.profile_panel.set_record(record)", selection)
+        panel = (ROOT / "person_profile_panel.py").read_text(encoding="utf-8")
+        self.assertIn("self.edit_button.setEnabled(bool(record) and self.editor is not None)", panel)
+        start = method("persons_workbench.py", "PersonsWorkbench", "_start_profile_edit")
+        self.assertIn("if record is None:", start)
+        self.assertIn('self.person_db.get_by_name(name)', start)
         self.assertIn("KB-only profile", selection)
         data = method("persons_workbench.py", "PersonRosterModel", "data")
         self.assertIn("[KB only]", data)

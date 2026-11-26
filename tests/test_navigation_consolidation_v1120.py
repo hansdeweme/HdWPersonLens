@@ -44,7 +44,8 @@ class NavigationConsolidationTests(unittest.TestCase):
     def test_legacy_paths_remain(self):
         for method in ("query_persons", "reencode_knowledge_base", "open_workbench_management"):
             self.assertIn(method, self.methods)
-        self.assertIn('legacy = m.addMenu("Advanced / Legacy Tools")', self.text)
+        self.assertIn('advanced = m.addMenu("Advanced Tools")', self.text)
+        self.assertIn('legacy = advanced.addMenu("Legacy Person Management Dialogs")', self.text)
 
 
 if __name__ == "__main__": unittest.main()

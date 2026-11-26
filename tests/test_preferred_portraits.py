@@ -10,7 +10,7 @@ from unittest.mock import patch
 from PIL import Image
 import pytest
 
-from test_person_portrait_service import FakePersonService, current_cache_paths, load_module
+from tests.test_person_portrait_service import FakePersonService, current_cache_paths, load_module
 
 
 def create_image(path, color, size=100):
