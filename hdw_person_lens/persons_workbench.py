@@ -20,11 +20,11 @@ from __future__ import annotations
 from copy import deepcopy
 from pathlib import Path
 from jsonschema import Draft202012Validator, ValidationError
-from PyQt6.QtCore import (QAbstractTableModel, QEvent, QModelIndex, QObject, QRunnable, QSignalBlocker, QSize, QSortFilterProxyModel,
+from PyQt6.QtCore import (QAbstractTableModel, QEvent, QModelIndex, QObject, QRunnable, QSignalBlocker, QSize, QSortFilterProxyModel, QUrl,
                           QThreadPool, QTimer, Qt, pyqtSignal)
-from PyQt6.QtGui import QImage, QKeySequence, QPixmap, QShortcut
+from PyQt6.QtGui import QDesktopServices, QImage, QKeySequence, QPixmap, QShortcut
 from PyQt6.QtWidgets import (QApplication, QAbstractItemView, QComboBox, QGridLayout, QGroupBox, QHeaderView, QHBoxLayout, QLabel, QLineEdit,
-                             QMessageBox, QPushButton, QScrollArea, QSizePolicy, QSplitter, QTabWidget, QTableView, QVBoxLayout, QWidget)
+                             QMenu, QMessageBox, QPushButton, QScrollArea, QSizePolicy, QSplitter, QTabWidget, QTableView, QVBoxLayout, QWidget)
 from .person_portrait_service import PersonPortraitService
 from .portrait_process import PortraitProcessRunner
 from .person_kb_gallery import PersonKBImageGallery
@@ -322,6 +322,15 @@ class PersonsWorkbench(QWidget):
             button.clicked.connect(lambda _checked=False, action=key: self._request_person_action(action))
             actions_row.addWidget(button)
             self.person_actions[key] = button
+        self.open_folders = QPushButton("Open Folders ▾")
+        self.open_folders.setProperty("themeRole", "secondary")
+        self.open_folders.setAccessibleName("Open selected person's folders")
+        self.open_folders.setToolTip("Open the selected person's KB or photo-collection folder.")
+        folder_menu = QMenu(self.open_folders)
+        folder_menu.addAction("Knowledge Base folder", lambda: self._open_person_folder("kb"))
+        folder_menu.addAction("Photo collection folder", lambda: self._open_person_folder("photos"))
+        self.open_folders.setMenu(folder_menu)
+        actions_row.addWidget(self.open_folders)
         self.action_target = QLabel("No person selected")
         self.action_target.setObjectName("personStatus")
         self.action_target.setAccessibleName("Person management target")
@@ -1004,8 +1013,28 @@ class PersonsWorkbench(QWidget):
         self._cancel_profile_edit()
         return True
 
+    def _open_person_folder(self, kind):
+        name = self._current_person_name()
+        if not name: return
+        title = "Knowledge Base folder" if kind == "kb" else "Photo collection folder"
+        try:
+            if kind == "kb":
+                folder = self.person_service._kb_folder(name)
+            else:
+                record = self.person_db.get_by_name(name) or {}
+                folder = record.get("files_path")
+            path = Path(str(folder)).expanduser() if folder else None
+            if path is None or not path.is_dir():
+                QMessageBox.information(self, title, f"No accessible {title.lower()} for '{name}'.")
+                return
+            if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(path.resolve()))):
+                QMessageBox.warning(self, title, f"Could not open folder: {path}")
+        except (OSError, ValueError, RuntimeError) as exc:
+            QMessageBox.warning(self, title, f"Could not open folder: {exc}")
+
     def _update_person_actions(self, name):
         state = self.person_service.get_person_state(name) if name else None
+        self.open_folders.setEnabled(bool(name))
         kb_only = bool(state and state.has_recognition_state and not state.database_record_exists)
         if hasattr(self, "open_advanced_editor"):
             self.open_advanced_editor.setEnabled(bool(name and state and state.database_record_exists))
