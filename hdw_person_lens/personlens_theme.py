@@ -284,8 +284,25 @@ def apply_management_dialog_theme(dialog, *, primary=(), danger=()):
 
 QUERY_DIALOG_STYLE = WORKBENCH_STYLE.replace("QWidget#personsWorkbench", "QDialog#personQueryDialog") + """
 QDialog#personQueryDialog { background: #12161f; color: #e2e8f0; }
-QDialog#personQueryDialog QTableWidget { alternate-background-color: #171e2a; }
+QDialog#personQueryDialog QLabel#queryTitle { font-size: 15pt; font-weight: 700; color: #edf2f7; }
+QDialog#personQueryDialog QLabel#querySummary, QDialog#personQueryDialog QLabel#queryFilterLabel {
+    color: #a0aec0; font-size: 9pt;
+}
+QDialog#personQueryDialog QWidget#queryFilterBar { background: #1a2531; border: 1px solid #384658; border-radius: 6px; }
+QDialog#personQueryDialog QScrollArea#queryFiltersScroll { background: transparent; border: none; }
+QDialog#personQueryDialog QTableWidget {
+    background: #1a202c; alternate-background-color: #171e2a; color: #e2e8f0;
+    border: 1px solid #384658; border-radius: 6px; gridline-color: #2d3748;
+    selection-background-color: #254b6a; selection-color: #ffffff;
+}
+QDialog#personQueryDialog QTableWidget::item { padding: 4px 6px; }
+QDialog#personQueryDialog QTableWidget::item:hover { background: #28394d; }
 QDialog#personQueryDialog QTableWidget::item:selected { background: #254b6a; color: #ffffff; }
+QDialog#personQueryDialog QTableWidget:focus { border-color: #90cdf4; }
+QDialog#personQueryDialog QHeaderView::section {
+    background: #253244; color: #e2e8f0; border: 0;
+    border-right: 1px solid #384658; padding: 8px; font-weight: 650;
+}
 QDialog#personQueryDialog QComboBox QAbstractItemView {
     background: #1a202c; color: #e2e8f0; selection-background-color: #254b6a;
 }

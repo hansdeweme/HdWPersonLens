@@ -1,0 +1,80 @@
+--- a/hdw_person_lens/browse_persons.py
++++ b/hdw_person_lens/browse_persons.py
+@@ -208,8 +208,8 @@
+         self.filter_bar = QWidget()
+         self.filter_bar.setObjectName("queryFilterBar")
+         grid = QGridLayout(self.filter_bar)
+-        grid.setContentsMargins(8, 6, 8, 6)
+-        grid.setHorizontalSpacing(10)
++        grid.setContentsMargins(6, 4, 6, 4)
++        grid.setHorizontalSpacing(6)
+         grid.setVerticalSpacing(4)
+         self._filter_groups: dict[str, QComboBox] = {}
+ 
+@@ -218,7 +218,7 @@
+             container.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed,)
+             layout = QHBoxLayout(container)
+             layout.setContentsMargins(2, 0, 2, 0)
+-            layout.setSpacing(4)
++            layout.setSpacing(2)
+             label = QLabel(self._prettify(key_path))
+             label.setObjectName("queryFilterLabel")
+             combo = _FilterComboBox()
+@@ -226,7 +226,7 @@
+             combo.addItem("Yes", 1)
+             combo.addItem("No", 2)
+             combo.setFixedHeight(26)
+-            combo.setFixedWidth(68)
++            combo.setFixedWidth(54)
+             combo.setAccessibleName(f"Filter {self._prettify(key_path)}")
+             combo.currentIndexChanged.connect(
+                 self._apply_filters
+@@ -253,7 +253,7 @@
+             grid.setColumnStretch(spacer_column, 1,)
+             reset_btn = QPushButton("Reset")
+             reset_btn.setFixedHeight(23)
+-            reset_btn.setMaximumWidth(60)
++            reset_btn.setMaximumWidth(54)
+             reset_btn.clicked.connect(self._reset_filters)
+             grid.addWidget(reset_btn, 0, spacer_column + 1, alignment=Qt.AlignmentFlag.AlignRight,)
+         else:
+@@ -265,7 +265,7 @@
+         filters.setWidgetResizable(True)
+         filters.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+         filters.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+-        filters.setFixedHeight(65)
++        filters.setFixedHeight(54)
+         v.addWidget(filters)
+ 
+     # ---------- population / sizing ----------
+@@ -312,7 +312,9 @@
+                     self.table.setItem(r, c, SortableTableItem("", ""))
+                 else:
+                     text, sort_value = self._display_value_and_sort_key(rec, path)
+-                    self.table.setItem(r, c, SortableTableItem(text, sort_value))
++                    item = SortableTableItem(text, sort_value)
++                    if text: item.setToolTip(text)
++                    self.table.setItem(r, c, item)
+ 
+             # remember boolean values for this row for fast filtering
+             row_bools = {bp: self._coerce_bool(self._value_at(rec, bp)) for bp in self.boolean_fields}
+@@ -327,7 +329,6 @@
+         self.table.setSortingEnabled(True)
+         self.table.verticalHeader().setDefaultSectionSize(self.PREVIEW_HEIGHT + 4)
+         self.identity.verticalHeader().setDefaultSectionSize(self.PREVIEW_HEIGHT + 4)
+-        self.table.resizeColumnsToContents()
+         QTimer.singleShot(0, self._load_previews)
+ 
+     def _load_previews(self):
+@@ -353,7 +354,10 @@
+                 pass  # A subsequent population may have replaced this item.
+ 
+     def _auto_resize_width(self):
+-        self.table.resizeColumnsToContents()
++        metrics = self.table.horizontalHeader().fontMetrics()
++        for column in range(1, self.table.columnCount() - 1):
++            title = self.table.horizontalHeaderItem(column).text()
++            self.table.setColumnWidth(column, max(68, min(165, metrics.horizontalAdvance(title) + 28)))
+         total = sum(self.table.columnWidth(i) for i in range(1, self.table.columnCount() - 1)) + self.identity.width() + 48
+         screen = self.screen()
+         limit = max(800, screen.availableGeometry().width() - 80) if screen else 1400

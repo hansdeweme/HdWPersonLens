@@ -7,10 +7,10 @@
 #
 import os, sys, subprocess
 # PyQt6 imports
-from PyQt6.QtCore    import Qt, QObject, QRunnable, QThreadPool, QTimer, pyqtSignal
+from PyQt6.QtCore    import Qt, QObject, QRunnable, QThreadPool, QTimer, QSize, pyqtSignal
 from PyQt6.QtGui     import QPixmap, QImageReader
-from PyQt6.QtWidgets import (QPushButton, QMessageBox, QLabel, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem, QDialog, QSizePolicy, QMenu, 
-                             QComboBox, QButtonGroup, QWidget, QGridLayout, QSizePolicy)
+from PyQt6.QtWidgets import (QAbstractItemView, QPushButton, QMessageBox, QLabel, QVBoxLayout, QHBoxLayout, QTableView, QTableWidget, QTableWidgetItem, QDialog, QSizePolicy, QMenu,
+                             QComboBox, QWidget, QGridLayout, QScrollArea)
 # local imports                             
 from .person_db      import PersonDB
 from .personlens_theme import apply_query_dialog_theme
@@ -126,7 +126,7 @@ def _load_view_columns(settings: dict | None) -> list[tuple[str, str]]:
 class QueryPersonsDialog(QDialog):
     MAX_DYNAMIC_COLS = 6       # keep it readable
     MAX_DISCRETE_CARD = 8      # ≤ 8 unique values ⇒ consider “discrete”
-    PREVIEW_HEIGHT = 56
+    PREVIEW_HEIGHT = 76
 
     def __init__(self, person_db: PersonDB, folder_getter=None, sample_getter=None, settings=None, parent=None):
         super().__init__(parent)
@@ -149,49 +149,85 @@ class QueryPersonsDialog(QDialog):
         self.columns = self.BASE_COLS + self.dynamic_discrete_cols + [("~preview", "Preview")]
 
         v = QVBoxLayout(self)
+        v.setContentsMargins(14, 12, 14, 12)
+        v.setSpacing(10)
+        heading = QLabel("Browse Persons DB")
+        heading.setObjectName("queryTitle")
+        v.addWidget(heading)
+        summary = QLabel(f"{len(self.all_rows)} database people  ·  Sort by a column heading  ·  Double-click to open KB folder")
+        summary.setObjectName("querySummary")
+        summary.setWordWrap(True)
+        v.addWidget(summary)
         # --- table ---
         self.table = QTableWidget()
+        self.table.setObjectName("queryPeopleTable")
+        self.table.setAccessibleName("Persons database browser")
+        self.table.setAlternatingRowColors(True)
         self.table.setColumnCount(len(self.columns))
         self.table.setHorizontalHeaderLabels([label for _, label in self.columns])
         self.table.setSortingEnabled(True)
         self.table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.table.horizontalHeader().setStretchLastSection(True)
-        v.addWidget(self.table, 1)
+        self.identity = QTableView()
+        self.identity.setObjectName("queryIdentityTable")
+        self.identity.setAccessibleName("Frozen person portraits and names")
+        self.identity.setModel(self.table.model())
+        self.identity.setSelectionModel(self.table.selectionModel())
+        self.identity.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.identity.setAlternatingRowColors(True)
+        self.identity.setIconSize(QSize(72, 72))
+        self.identity.verticalHeader().hide()
+        self.identity.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.identity.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.identity.setFixedWidth(266)
+        self.identity.setColumnWidth(0, 260)
+        self.identity.horizontalHeader().setSectionsClickable(True)
+        self.identity.horizontalHeader().sectionClicked.connect(self._sort_identity)
+        for column in range(1, len(self.columns)): self.identity.setColumnHidden(column, True)
+        self.table.setColumnHidden(0, True)
+        self.table.setColumnHidden(len(self.columns) - 1, True)  # Preview appears beside the frozen name.
+        self.table.verticalHeader().hide()
+        self.table.verticalScrollBar().valueChanged.connect(self.identity.verticalScrollBar().setValue)
+        self.identity.verticalScrollBar().valueChanged.connect(self.table.verticalScrollBar().setValue)
+        table_row = QHBoxLayout()
+        table_row.setSpacing(0)
+        table_row.addWidget(self.identity)
+        table_row.addWidget(self.table, 1)
+        v.addLayout(table_row, 1)
         # context menu & double-click (same behavior as before)
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self._on_context_menu)
         self.table.itemDoubleClicked.connect(self._open_row_folder)
+        self.identity.doubleClicked.connect(self._open_row_folder)
+        self.identity.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.identity.customContextMenuRequested.connect(lambda pos: self._on_context_menu(pos, self.identity))
         # fill
         self._populate_table(self.all_rows)
         self._auto_resize_width()
         # --- bottom filter bar (boolean tri-state, 2 rows) ---
         self.filter_bar = QWidget()
+        self.filter_bar.setObjectName("queryFilterBar")
         grid = QGridLayout(self.filter_bar)
-        grid.setContentsMargins(3, 3, 3, 3)
-        grid.setHorizontalSpacing(4)
-        grid.setVerticalSpacing(0)
-        self._filter_groups: dict[str, QButtonGroup] = {}
+        grid.setContentsMargins(6, 4, 6, 4)
+        grid.setHorizontalSpacing(6)
+        grid.setVerticalSpacing(4)
+        self._filter_groups: dict[str, QComboBox] = {}
 
         def make_field_group(key_path: str) -> QWidget:
             container = QWidget()
             container.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed,)
             layout = QHBoxLayout(container)
             layout.setContentsMargins(2, 0, 2, 0)
-            layout.setSpacing(4)
+            layout.setSpacing(2)
             label = QLabel(self._prettify(key_path))
-            label.setStyleSheet("font-size: 8pt;")
+            label.setObjectName("queryFilterLabel")
             combo = _FilterComboBox()
             combo.addItem("All", 0)
             combo.addItem("Yes", 1)
             combo.addItem("No", 2)
-            combo.setFixedHeight(23)
-            combo.setFixedWidth(58)
-            combo.setStyleSheet("""
-                QComboBox {
-                    font-size: 8pt;
-                    padding: 0px 3px;
-                }
-            """)
+            combo.setFixedHeight(26)
+            combo.setFixedWidth(54)
+            combo.setAccessibleName(f"Filter {self._prettify(key_path)}")
             combo.currentIndexChanged.connect(
                 self._apply_filters
             )
@@ -217,13 +253,20 @@ class QueryPersonsDialog(QDialog):
             grid.setColumnStretch(spacer_column, 1,)
             reset_btn = QPushButton("Reset")
             reset_btn.setFixedHeight(23)
-            reset_btn.setMaximumWidth(60)
+            reset_btn.setMaximumWidth(54)
             reset_btn.clicked.connect(self._reset_filters)
             grid.addWidget(reset_btn, 0, spacer_column + 1, alignment=Qt.AlignmentFlag.AlignRight,)
         else:
             lbl = QLabel("No boolean fields detected in DB.")
             grid.addWidget(lbl, 0, 0)
-        v.addWidget(self.filter_bar)
+        filters = QScrollArea()
+        filters.setObjectName("queryFiltersScroll")
+        filters.setWidget(self.filter_bar)
+        filters.setWidgetResizable(True)
+        filters.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        filters.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        filters.setFixedHeight(54)
+        v.addWidget(filters)
 
     # ---------- population / sizing ----------
     def _default_sort_column(self):
@@ -269,7 +312,9 @@ class QueryPersonsDialog(QDialog):
                     self.table.setItem(r, c, SortableTableItem("", ""))
                 else:
                     text, sort_value = self._display_value_and_sort_key(rec, path)
-                    self.table.setItem(r, c, SortableTableItem(text, sort_value))
+                    item = SortableTableItem(text, sort_value)
+                    if text: item.setToolTip(text)
+                    self.table.setItem(r, c, item)
 
             # remember boolean values for this row for fast filtering
             row_bools = {bp: self._coerce_bool(self._value_at(rec, bp)) for bp in self.boolean_fields}
@@ -283,7 +328,7 @@ class QueryPersonsDialog(QDialog):
             self.table.sortItems(sort_idx, sort_order)
         self.table.setSortingEnabled(True)
         self.table.verticalHeader().setDefaultSectionSize(self.PREVIEW_HEIGHT + 4)
-        self.table.resizeColumnsToContents()
+        self.identity.verticalHeader().setDefaultSectionSize(self.PREVIEW_HEIGHT + 4)
         QTimer.singleShot(0, self._load_previews)
 
     def _load_previews(self):
@@ -303,14 +348,20 @@ class QueryPersonsDialog(QDialog):
         if image is not None and not image.isNull():
             try:
                 item.setData(Qt.ItemDataRole.DecorationRole, QPixmap.fromImage(image))
+                if item.row() >= 0:
+                    self.table.item(item.row(), 0).setData(Qt.ItemDataRole.DecorationRole, QPixmap.fromImage(image))
             except RuntimeError:
                 pass  # A subsequent population may have replaced this item.
 
     def _auto_resize_width(self):
-        self.table.resizeColumnsToContents()
-        total = sum(self.table.columnWidth(i) for i in range(self.table.columnCount())) + 48
-        # keep at least current height; widen if needed
-        self.resize(max(self.width(), total), self.height())
+        metrics = self.table.horizontalHeader().fontMetrics()
+        for column in range(1, self.table.columnCount() - 1):
+            title = self.table.horizontalHeaderItem(column).text()
+            self.table.setColumnWidth(column, max(68, min(165, metrics.horizontalAdvance(title) + 28)))
+        total = sum(self.table.columnWidth(i) for i in range(1, self.table.columnCount() - 1)) + self.identity.width() + 48
+        screen = self.screen()
+        limit = max(800, screen.availableGeometry().width() - 80) if screen else 1400
+        self.resize(min(max(self.width(), total), limit), self.height())
 
     def _is_dynamic_excluded(self, path: str) -> bool:
         if path in self._EXCLUDE_FROM_DYNAMIC:
@@ -322,6 +373,12 @@ class QueryPersonsDialog(QDialog):
         for combo in self._filter_groups.values():
             combo.setCurrentIndex(0)
         self._apply_filters()
+
+    def _sort_identity(self, _column):
+        order = (Qt.SortOrder.DescendingOrder if self.identity.horizontalHeader().sortIndicatorOrder() == Qt.SortOrder.AscendingOrder
+                 else Qt.SortOrder.AscendingOrder)
+        self.table.sortItems(0, order)
+        self.identity.horizontalHeader().setSortIndicator(0, order)
     
     def _apply_filters(self):
         # Build {key_path: state} where state in {0:All,1:Yes,2:No}
@@ -339,17 +396,19 @@ class QueryPersonsDialog(QDialog):
                 if state == 2 and val is not False:
                     keep = False; break
             self.table.setRowHidden(r, not keep)
+            self.identity.setRowHidden(r, not keep)
 
     # ---------- context menu / open folder ----------
-    def _on_context_menu(self, pos):
-        row = self.table.indexAt(pos).row()
+    def _on_context_menu(self, pos, view=None):
+        view = view or self.table
+        row = view.indexAt(pos).row()
         if row < 0: return
         name = self.table.item(row, 0).text() if self.table.item(row, 0) else None
         if not name: return
         menu = QMenu(self)
         act_open = menu.addAction("Open knowledgebase folder")
         act_reveal = menu.addAction("Open Foto collection")
-        chosen = menu.exec(self.table.viewport().mapToGlobal(pos))
+        chosen = menu.exec(view.viewport().mapToGlobal(pos))
         if chosen == act_open:
             self._open_folder(name)
         elif chosen == act_reveal:
