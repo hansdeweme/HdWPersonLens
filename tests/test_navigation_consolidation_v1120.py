@@ -45,7 +45,7 @@ class NavigationConsolidationTests(unittest.TestCase):
         for method in ("query_persons", "reencode_knowledge_base", "open_workbench_management"):
             self.assertIn(method, self.methods)
         self.assertIn('advanced = m.addMenu("Advanced Tools")', self.text)
-        self.assertIn('legacy = advanced.addMenu("Legacy Person Management Dialogs")', self.text)
+        self.assertIn('legacy = admin.addMenu("Legacy Person Management Dialogs")', self.text)
 
 
 if __name__ == "__main__": unittest.main()

@@ -21,10 +21,11 @@ class ManagementRetirementNavigationTests(unittest.TestCase):
         for action in ("add", "rename", "remove", "images", "reencode"):
             self.assertIn(f'self.open_workbench_management("{action}")', setup)
         self.assertIn('advanced = m.addMenu("Advanced Tools")', SOURCE)
-        self.assertIn('legacy = advanced.addMenu("Legacy Person Management Dialogs")', SOURCE)
+        self.assertIn('admin = mb.addMenu("Administrator")', SOURCE)
+        self.assertIn('legacy = admin.addMenu("Legacy Person Management Dialogs")', SOURCE)
 
     def test_legacy_dialogs_remain_reachable(self):
-        setup = SOURCE[SOURCE.index('legacy = advanced.addMenu("Legacy Person Management Dialogs")'):]
+        setup = SOURCE[SOURCE.index('legacy = admin.addMenu("Legacy Person Management Dialogs")'):]
         for name in ("add_new_person", "rename_person", "remove_person", "edit_person_images", "reencode_single_person"):
             self.assertIn(f"self.{name}", setup)
 

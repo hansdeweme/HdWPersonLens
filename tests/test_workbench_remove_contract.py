@@ -19,6 +19,13 @@ def src(filename, cls, name):
 
 
 class WorkbenchRemoveContractTests(unittest.TestCase):
+    def test_cancel_preserves_pending_removal_options(self):
+        panel = (ROOT / "person_workbench_remove.py").read_text(encoding="utf-8")
+        self.assertIn("self.cancel_button.clicked.connect(self.confirm_discard)", panel)
+        discard = src("person_workbench_remove.py", "WorkbenchRemovePanel", "confirm_discard")
+        self.assertIn("self.delete_photos.isChecked()", discard)
+        self.assertIn("QMessageBox.StandardButton.Cancel", discard)
+
     def test_workbench_uses_native_remove_panel(self):
         action = src("persons_workbench.py", "PersonsWorkbench", "_request_person_action")
         self.assertIn("self.open_remove(name, checked=True)", action)

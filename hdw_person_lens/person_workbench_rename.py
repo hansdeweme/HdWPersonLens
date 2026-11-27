@@ -46,7 +46,7 @@ class WorkbenchRenamePanel(QGroupBox):
         self.rename_photos.toggled.connect(self._update_suggestion)
         self.rename_photos.toggled.connect(self.custom_path.setEnabled)
         self.apply_button.clicked.connect(self._review)
-        self.cancel_button.clicked.connect(self.hide)
+        self.cancel_button.clicked.connect(self.confirm_discard)
         self.setVisible(False)
 
     def open_for(self, name: str) -> bool:

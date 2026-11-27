@@ -40,7 +40,7 @@ class WorkbenchRemovePanel(QGroupBox):
         controls.addStretch()
         layout.addLayout(controls)
         self.review_button.clicked.connect(self._review)
-        self.cancel_button.clicked.connect(self.hide)
+        self.cancel_button.clicked.connect(self.confirm_discard)
         self.setVisible(False)
 
     def open_for(self, name: str) -> bool:

@@ -19,6 +19,13 @@ def calls(node, method_name):
 
 
 class NativeRenameContractTests(unittest.TestCase):
+    def test_cancel_respects_pending_rename(self):
+        panel = (SOURCE / "person_workbench_rename.py").read_text(encoding="utf-8")
+        self.assertIn("self.cancel_button.clicked.connect(self.confirm_discard)", panel)
+        discard = ast.unparse(method("person_workbench_rename.py", "WorkbenchRenamePanel", "confirm_discard"))
+        self.assertIn("self.has_pending_changes()", discard)
+        self.assertIn("QMessageBox.StandardButton.Cancel", discard)
+
     def test_workbench_owns_rename_panel_and_signal(self):
         start = method("persons_workbench.py", "PersonsWorkbench", "_request_person_action")
         self.assertIn("self.open_rename(name, checked=True)", ast.unparse(start))

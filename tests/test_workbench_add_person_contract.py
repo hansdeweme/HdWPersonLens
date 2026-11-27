@@ -37,6 +37,19 @@ class GuidedAddPersonTests(unittest.TestCase):
         self.assertIn("QMessageBox.StandardButton.No", start)
         self.assertIn("AddPersonWorker(self.service, name, images)", start)
 
+    def test_duplicate_name_blocks_both_image_entry_paths(self):
+        for name in ("_choose_images", "_add_paths"):
+            body = source("person_workbench_add.py", "WorkbenchAddPerson", name)
+            self.assertIn("self.service.find_recognition_name(self._name())", body)
+        controls = source("person_workbench_add.py", "WorkbenchAddPerson", "_sync_controls")
+        self.assertIn("self.choose.setEnabled(not self.busy and valid)", controls)
+
+    def test_source_changes_during_confirmation_block_worker(self):
+        start = source("person_workbench_add.py", "WorkbenchAddPerson", "_start")
+        self.assertIn("os.stat(path).st_mtime_ns", start)
+        self.assertIn("if self.service.find_recognition_name(name) is not None or changed", start)
+        self.assertLess(start.index("or changed"), start.index("self.thread = QThread(self)"))
+
     def test_worker_signal_and_activity_lifecycle(self):
         start = source("person_workbench_add.py", "WorkbenchAddPerson", "_start")
         for expression in ("self.worker.progress.connect(self._forward_progress)",

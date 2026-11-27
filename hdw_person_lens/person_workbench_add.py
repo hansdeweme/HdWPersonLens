@@ -92,11 +92,13 @@ class WorkbenchAddPerson(QWidget):
         self._sync_controls()
 
     def _choose_images(self):
+        if self.service.find_recognition_name(self._name()) is not None: return
         patterns = " ".join(f"*{ext}" for ext in sorted(self.extensions))
         files, _ = QFileDialog.getOpenFileNames(self, "Select Training Images", "", f"Images ({patterns});;All Files (*)")
         self._add_paths(files)
 
     def _add_paths(self, paths):
+        if self.service.find_recognition_name(self._name()) is not None: return
         added, rejected = [], 0
         for raw in paths:
             path = os.path.abspath(os.path.expanduser(str(raw or "").strip()))
@@ -127,7 +129,7 @@ class WorkbenchAddPerson(QWidget):
         valid = bool(self._name()) and self.service.find_recognition_name(self._name()) is None
         self.name.setEnabled(not self.busy)
         self.drop_list.setEnabled(not self.busy)
-        self.choose.setEnabled(not self.busy)
+        self.choose.setEnabled(not self.busy and valid)
         self.remove.setEnabled(not self.busy and bool(self.drop_list.selectedItems()))
         self.clear.setEnabled(not self.busy and bool(self.images))
         self.apply.setEnabled(not self.busy and valid and bool(self.images))
@@ -157,10 +159,16 @@ class WorkbenchAddPerson(QWidget):
         if any(not os.path.isfile(path) for path in images):
             QMessageBox.warning(self, "Image Missing", "One or more training images changed or disappeared. Recheck the list.")
             return
+        try: sources = [(path, os.stat(path).st_size, os.stat(path).st_mtime_ns) for path in images]
+        except OSError:
+            QMessageBox.warning(self, "Image Missing", "One or more training images disappeared. Recheck the list.")
+            return
         reply = QMessageBox.question(self, "Create Recognition Profile", f"Create '{name}' from {len(images)} image(s)?",
                                      QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
         if reply != QMessageBox.StandardButton.Yes: return
-        if self.service.find_recognition_name(name) is not None or any(not os.path.isfile(path) for path in images):
+        try: changed = any((os.stat(path).st_size, os.stat(path).st_mtime_ns) != (size, mtime) for path, size, mtime in sources)
+        except OSError: changed = True
+        if self.service.find_recognition_name(name) is not None or changed:
             QMessageBox.warning(self, "Sources Changed", "The profile or source images changed during confirmation. Review again.")
             return
         self.busy, self._result, self._error = True, None, ""

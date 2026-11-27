@@ -24,7 +24,8 @@ class AdvancedToolsTests(unittest.TestCase):
         view = MENUBAR.index('m = mb.addMenu("View")')
         advanced = MENUBAR.index('advanced = m.addMenu("Advanced Tools")')
         self.assertLess(view, advanced)
-        self.assertIn('legacy = advanced.addMenu("Legacy Person Management Dialogs")', MENUBAR)
+        self.assertIn('admin = mb.addMenu("Administrator")', MENUBAR)
+        self.assertIn('legacy = admin.addMenu("Legacy Person Management Dialogs")', MENUBAR)
         self.assertNotIn('legacy = m.addMenu("Advanced / Legacy Tools")', MENUBAR)
 
     def test_legacy_dialogs_retain_original_handlers(self):
@@ -39,13 +40,14 @@ class AdvancedToolsTests(unittest.TestCase):
         self.assertEqual(MENUBAR.count('act(advanced, "Browse Persons DB (Legacy)…"'), 1)
 
     def test_global_encoding_remains_separate(self):
+        self.assertIn('maint = admin.addMenu("KB Maintenance / Repair")', MENUBAR)
         self.assertIn('act(maint, "Rebuild All Encodings…", self.reencode_knowledge_base', MENUBAR)
         self.assertEqual(MENUBAR.count('act(maint, "Rebuild All Encodings…"'), 1)
 
     def test_workbench_activity_shortcuts_preserved(self):
         self.assertIn('self.show_persons_workbench, shortcut="Ctrl+B"', MENUBAR)
         self.assertIn('self.show_activity, shortcut="Ctrl+1"', MENUBAR)
-        self.assertIn('self.clear_log,  shortcut="Ctrl+Shift+L"', MENUBAR)
+        self.assertIn('self.clear_log, shortcut="Ctrl+Shift+L"', MENUBAR)
 
 
 if __name__ == "__main__": unittest.main()

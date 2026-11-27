@@ -410,15 +410,6 @@ class MainWindow(QMainWindow):
         act(curatation, "Analyze and Optimize KB Gallery…", self.optimize_kb_gallery, tip="Compare current KB images with each person's Persons DB collection",
                     status="Build and review a role-balanced face/body gallery proposal before applying changes", key="act_optimize_gallery")
         act(m, "", None, sep=True)     
-        maint = m.addMenu("Maintenance / Repair")        
-        act(maint, "Repair DB / KB Folder Consistency…", self.consistency_check, shortcut="Ctrl+K", tip="Check dataset vs encodings consistency",
-                    status="Find missing persons, orphan encodings, and other mismatches", key="act_consistency_check")          
-        act(maint, "Rebuild All Encodings…", self.reencode_knowledge_base, tip="Rebuild face/body encodings for the complete KB.",  key="act_reencode_kb")       
-        act(maint, "Find Duplicate Images…", self.dedup_analyze, shortcut="Ctrl+Shift+D",     tip="Detect and manage duplicate images",
-                    status="Find duplicates (perceptual hash) and report", key="act_dedup_analyze")
-        act(maint, "Quarantine Duplicate Images…", self.dedup_quarantine, shortcut="Ctrl+Alt+Shift+D",     tip="Detect and quarantine duplicate images",
-                    status="Find duplicates and relocate them to quarantine folder", key="act_dedup_quarantine")
-        act(m, "", None, sep=True)     
         diag = m.addMenu("Diagnostics")
         act(diag, "Show Knowledge Base Stats…", self.show_knowledge_stats, tip="Show knowledge base statistics",
                     status="Displays counts, per-person totals, and encodings file size", key="act_kb_stats")
@@ -450,16 +441,25 @@ class MainWindow(QMainWindow):
                     status=f"Create and edit metadata records in {PERSON_SCHEMA_FILENAME}", key="act_person_database")
         act(advanced, "Browse Persons DB (Legacy)…", self.query_persons, shortcut="Ctrl+Alt+B", tip="Open the original standalone persons browser",
                     status="Legacy query, filter and export tools; Workbench is the primary roster", key="act_browse_persons_db")
-        advanced.addSeparator()
-        legacy = advanced.addMenu("Legacy Person Management Dialogs")
+        act(m, "", None, sep=True)
+        act(m, "Clear Log...", self.clear_log, shortcut="Ctrl+Shift+L", tip="Clear the log output",
+            status="Clears the log window", key="act_clear_log")
+        # ---------------- Administrator ----------------
+        admin = mb.addMenu("Administrator")
+        maint = admin.addMenu("KB Maintenance / Repair")
+        act(maint, "Repair DB / KB Folder Consistency…", self.consistency_check, shortcut="Ctrl+K", tip="Check dataset vs encodings consistency",
+            status="Find missing persons, orphan encodings, and other mismatches", key="act_consistency_check")
+        act(maint, "Rebuild All Encodings…", self.reencode_knowledge_base, tip="Rebuild face/body encodings for the complete KB.", key="act_reencode_kb")
+        act(maint, "Find Duplicate Images…", self.dedup_analyze, shortcut="Ctrl+Shift+D", tip="Detect and manage duplicate images",
+            status="Find duplicates (perceptual hash) and report", key="act_dedup_analyze")
+        act(maint, "Quarantine Duplicate Images…", self.dedup_quarantine, shortcut="Ctrl+Alt+Shift+D", tip="Detect and quarantine duplicate images",
+            status="Find duplicates and relocate them to quarantine folder", key="act_dedup_quarantine")
+        legacy = admin.addMenu("Legacy Person Management Dialogs")
         act(legacy, "Legacy Add Person Dialog…", self.add_new_person, tip="Original recognition-profile creation dialog")
         act(legacy, "Legacy Rename Person Dialog…", self.rename_person, tip="Original rename dialog")
         act(legacy, "Legacy Remove Person Dialog…", self.remove_person, tip="Original full-removal dialog")
         act(legacy, "Legacy Edit Images Dialog…", self.edit_person_images, tip="Original image-management dialog")
         act(legacy, "Legacy Re-encode Person Dialog…", self.reencode_single_person, tip="Original all-image encoding dialog")
-        act(m, "", None, sep=True)
-        act(m, "Clear Log...",   self.clear_log,  shortcut="Ctrl+Shift+L",      tip="Clear the log output", 
-                    status="Clears the log window", key="act_clear_log")        
         # ---------------- Help ----------------
         m = mb.addMenu("Help")
         act(m, "About / Help…", self.show_about_dialog, shortcut="F1", tip="Show help and credits",
