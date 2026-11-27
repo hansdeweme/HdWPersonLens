@@ -67,7 +67,8 @@ def inspect(root):
             "view_menu": 'advanced = m.addMenu("Advanced Tools")' in main,
             "editor_route": 'act(advanced, "Persons DB Editor…", self.show_person_database' in main,
             "browser_route": 'act(advanced, "Browse Persons DB (Legacy)…", self.query_persons' in main,
-            "legacy_dialogs": 'legacy = advanced.addMenu("Legacy Person Management Dialogs")' in main and all(
+            "legacy_dialogs": 'admin = mb.addMenu("Administrator")' in main and
+                'legacy = admin.addMenu("Legacy Person Management Dialogs")' in main and all(
                 f'self.{handler}, tip="Original' in main for handler in
                 ("add_new_person", "rename_person", "remove_person", "edit_person_images", "reencode_single_person")),
             "shortcuts": 'shortcut="Ctrl+Shift+P"' in main and 'shortcut="Ctrl+Alt+B"' in main,

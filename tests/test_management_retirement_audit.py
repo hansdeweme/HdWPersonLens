@@ -6,12 +6,18 @@ from pathlib import Path
 
 
 MODULE = Path(__file__).resolve().parents[1] / "management_retirement_audit.py"
+if not MODULE.exists(): MODULE = MODULE.parent / "source_baseline_root" / MODULE.name
 spec = importlib.util.spec_from_file_location("retirement_audit", MODULE)
 audit = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(audit)
 
 
 class ManagementRetirementAuditTests(unittest.TestCase):
+    def test_v1167_administrator_route_keeps_legacy_dialogs(self):
+        findings = audit.inspect(Path(__file__).resolve().parents[1])
+        self.assertTrue(all(findings[action]["administrator_legacy_route"] for action in audit.CAPABILITIES))
+        self.assertTrue(all(audit.decide(findings, {})[action]["decision"] == "KEEP" for action in audit.CAPABILITIES))
+
     def test_uncertified_actions_are_kept(self):
         findings = {"rename": {"principal_menu_route": True, "native_panel_route": True,
                                 "legacy_handler": True, "service_api": True, "legacy_dialog_module": True}}

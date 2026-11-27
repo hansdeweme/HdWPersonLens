@@ -48,6 +48,8 @@ def inspect(root):
         findings[action] = {
             "principal_menu_route": f'open_workbench_management("{action}")' in main,
             "native_panel_route": native in workbench_methods,
+            "administrator_legacy_route": 'legacy = admin.addMenu("Legacy Person Management Dialogs")' in main and
+                f'self.{legacy}, tip="Original' in main,
             "legacy_handler": legacy in main_methods,
             "service_api": api in service_methods,
             "legacy_dialog_module": bool(class_methods(dialogs, LEGACY_DIALOGS[action])) if dialogs else False,

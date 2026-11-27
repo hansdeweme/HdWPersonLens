@@ -5,12 +5,19 @@ import unittest
 
 
 MODULE = Path(__file__).resolve().parents[1] / "workspace_parity_audit.py"
+if not MODULE.exists(): MODULE = MODULE.parent / "source_baseline_root" / MODULE.name
 spec = importlib.util.spec_from_file_location("workspace_parity_audit", MODULE)
 audit = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(audit)
 
 
 class WorkspaceParityAuditTests(unittest.TestCase):
+    def test_current_administrator_menu_is_recognized(self):
+        findings = audit.inspect(Path(__file__).resolve().parents[1])
+        self.assertTrue(findings["advanced_tools"]["legacy_dialogs"])
+        self.assertTrue(findings["advanced_tools"]["global_encoding"])
+        self.assertEqual(audit.decide(findings, {})["advanced_tools"]["decision"], "VERIFY")
+
     def test_empty_evidence_cannot_certify(self):
         findings = {"profile": {"shared_form": True}}
         result = audit.decide(findings, {})
