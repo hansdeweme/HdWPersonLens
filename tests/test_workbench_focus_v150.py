@@ -38,6 +38,12 @@ class Toolbar:
 
 
 class WorkbenchFocusTests(unittest.TestCase):
+    def test_compact_identity_header_places_portrait_before_name(self):
+        header = SOURCE.split("        person_header = QHBoxLayout()", 1)[1].split("        self.detail_tabs = QTabWidget()", 1)[0]
+        self.assertLess(header.index("person_header.addWidget(self.portrait)"), header.index("person_header.addWidget(self.name_label, 1)"))
+        self.assertIn("self.portrait.setFixedSize(80, 80)", header)
+        self.assertIn("Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft", header)
+
     def setUp(self):
         self.scheduled = []
         self.wb = SimpleNamespace(_focus_details=False, _normal_split_sizes=None, _restored_roster_share=0.42,

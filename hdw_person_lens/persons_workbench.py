@@ -393,16 +393,17 @@ class PersonsWorkbench(QWidget):
         detail_layout.setContentsMargins(8, 6, 4, 6)
         detail_layout.setSpacing(8)
         person_header = QHBoxLayout()
-        person_header.setSpacing(12)
-        self.name_label = QLabel("Select a person")
-        self.name_label.setObjectName("personHeading")
-        self.name_label.setWordWrap(True)
-        person_header.addWidget(self.name_label, 1)
+        person_header.setSpacing(10)
         self.portrait = QLabel("Portrait pending")
         self.portrait.setObjectName("personPortrait")
         self.portrait.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.portrait.setFixedSize(92, 92)
+        self.portrait.setFixedSize(80, 80)
         person_header.addWidget(self.portrait)
+        self.name_label = QLabel("Select a person")
+        self.name_label.setObjectName("personHeading")
+        self.name_label.setWordWrap(True)
+        self.name_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+        person_header.addWidget(self.name_label, 1)
         detail_layout.addLayout(person_header)
         self.detail_tabs = QTabWidget()
         self.detail_tabs.setAccessibleName("Person details")
@@ -902,7 +903,7 @@ class PersonsWorkbench(QWidget):
         self._portrait_full[name] = pixmap
         self.model.set_portrait(name, pixmap.scaled(56, 56, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
         if self._current_person_name() == name:
-            self.portrait.setPixmap(pixmap.scaled(88, 88, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+            self.portrait.setPixmap(pixmap.scaled(76, 76, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
 
     def refresh(self, select_name=None):
         if not self._confirm_leave_profile(): return
