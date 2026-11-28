@@ -26,7 +26,7 @@ class PersonKBJourneyPanel(QGroupBox):
     stage_requested = pyqtSignal(str)
 
     def __init__(self, parent=None):
-        super().__init__("KB workflow · navigate between existing tools", parent)
+        super().__init__("KB workflow · stages", parent)
         self.setObjectName("personKBJourney")
         layout = QVBoxLayout(self)
         self.notice = QLabel("Select a person to view KB workflow status. Stages never run automatically.")
@@ -55,5 +55,5 @@ class PersonKBJourneyPanel(QGroupBox):
         for stage in self.buttons:
             self.buttons[stage].setEnabled(available and (stage != "gallery" or images > 0))
             self.statuses[stage].setText(states[stage] if available else "—")
-        self.notice.setText(f"{name} · Open a stage to inspect or act; analyses require explicit confirmation."
+        self.notice.setText(f"{name} · Choose a stage; analyses require confirmation."
                             if available else "Select a person to view KB workflow status. Stages never run automatically.")

@@ -23,6 +23,7 @@ class PersonKBAssessmentWorkflow(QWidget):
         heading.setObjectName("assessmentHeading")
         header.addWidget(heading)
         self.next_button = QPushButton("Next Step")
+        self.next_button.setProperty("themeRole", "primary")
         self.next_button.clicked.connect(self._next)
         header.addWidget(self.next_button)
         layout.addLayout(header)
@@ -124,7 +125,7 @@ class PersonKBAssessmentWorkflow(QWidget):
             self.notice.setText(f"Running: {names}. Wait for analysis to finish.")
         elif next_step:
             self.next_button.setText(f"Next: {self.LABELS[next_step]}")
-            self.notice.setText("Run the next step or use an individual assessment control below.")
+            self.notice.setText("Run the next stage, or choose an individual assessment below.")
         else:
             self.next_button.setText("Workflow complete")
             self.notice.setText("All stages complete - results are provisional and read-only")
