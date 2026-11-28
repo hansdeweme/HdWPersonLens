@@ -52,7 +52,6 @@ class PersonOverviewPanel(QWidget):
             label.setAccessibleName(title)
             self.fields[title] = label
             form.addRow(title + ":", label)
-        layout.addWidget(card)
         action_card = QGroupBox("Recommended next step")
         action_layout = QVBoxLayout(action_card)
         self.next_action = QLabel("Select a person in the roster.")
@@ -70,6 +69,7 @@ class PersonOverviewPanel(QWidget):
             actions.addWidget(button)
         action_layout.addLayout(actions)
         layout.addWidget(action_card)
+        layout.addWidget(card)
         notice = QLabel("Technical readiness, embedding counts and image quality do not establish a person's identity.")
         notice.setObjectName("assessmentHint")
         notice.setWordWrap(True)
